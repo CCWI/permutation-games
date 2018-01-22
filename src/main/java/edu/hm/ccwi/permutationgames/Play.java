@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.net.URI;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
@@ -15,6 +17,8 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.spark.api.java.*;
+import org.apache.spark.SparkConf;
 
 import edu.hm.ccwi.permutationgames.Game30.Game30Mapper;
 import edu.hm.ccwi.permutationgames.Game30.Game30Reducer;
@@ -29,70 +33,69 @@ import edu.hm.ccwi.permutationgames.Game30.Game30Reducer;
 public class Play {
 
 	public static void main(String[] args) {
-		if (args.length > 2) {
-			if (args[0].equals("game30")) {
-				if (args[1].equals("hadoop")) {
-					String game30Dir = args[2];
 
-					if (!game30Dir.endsWith("/")) {
-						game30Dir += "/";
-					}
+        if (args.length > 2 && args.length < 4) {
+            if (args[0].equals("game30")) {
+                if (args[1].equals("hadoop-mapreduce") || args[1].equals("hadoop-spark")) {
 
-					String inputDir = game30Dir + "input/";
-					String outputDir = game30Dir + "output_" + getTime() + "/";
+                    String inputDir = args[2] + "/input/";
+                    String outputDir = args[2] + "/output_" + getTime() + "/";
 
-					try {
-						playGame30ApacheHadoop(inputDir, outputDir);
-					} catch (ClassNotFoundException | IOException | InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				} else {
-					String outputDir = args[2];
+                    try {
+                        if (args[1].equals("hadoop-mapreduce"))
+                            playGame30ApacheHadoop(inputDir, outputDir);
+                        else
+                            playGame30Spark(outputDir);
+                    } catch (ClassNotFoundException | IOException | InterruptedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                } else {
+                    String outputDir = args[2];
 
-					if (System.getProperty("os.name").toLowerCase().indexOf("win") >= 0) {
-						if (!outputDir.endsWith("\\")) {
-							outputDir += "\\";
-						}
-					} else {
-						if (!outputDir.endsWith("/")) {
-							outputDir += "/";
-						}
-					}
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        if (!outputDir.endsWith("\\")) {
+                            outputDir += "\\";
+                        }
+                    } else {
+                        if (!outputDir.endsWith("/")) {
+                            outputDir += "/";
+                        }
+                    }
 
-					try {
-						int numThreads = Integer.parseInt(args[1]);
+                    try {
+                        int numThreads = Integer.parseInt(args[1]);
 
-						if (numThreads == 1) {
-							try {
-								playGame30SingleThreaded(outputDir + "game30_output_" + getTime());
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						} else if (numThreads > 1 && numThreads <= 15) {
-							try {
-								playGame30MultiThreaded(outputDir + "game30_output_" + getTime(), numThreads);
-							} catch (IOException e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						} else {
-							printHelp();
-						}
-					} catch (NumberFormatException e) {
-						printHelp();
-					}
-				}
-			} else {
-				printHelp();
-			}
-		} else if (args.length > 0 && args[0].equals("availableProcessors")) {
-			System.out.println("# available processors: " + Runtime.getRuntime().availableProcessors());
-		} else {
-			printHelp();
-		}
-	}
+                        if (numThreads == 1) {
+                            try {
+                                playGame30SingleThreaded(outputDir + "game30_output_" + getTime());
+                            } catch (IOException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+                        } else if (numThreads > 1 && numThreads <= 15) {
+                            try {
+                                playGame30MultiThreaded(outputDir + "game30_output_" + getTime(), numThreads);
+                            } catch (IOException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+                        } else {
+                            printHelp();
+                        }
+                    } catch (NumberFormatException e) {
+                        printHelp();
+                    }
+                }
+            } else {
+                printHelp();
+            }
+        } else if (args.length > 0 && args[0].equals("availableProcessors")) {
+            System.out.println("# available processors: " + Runtime.getRuntime().availableProcessors());
+        } else {
+            printHelp();
+        }
+    }
 
 	/**
 	 * Spielt das Ratespiel 30 mit einem Thread und gibt alle Loesungen in eine
@@ -191,6 +194,55 @@ public class Play {
 		System.exit(job.waitForCompletion(true) ? 0 : 1);
 	}
 
+    /**
+     * Die Methode playGame30Spark() initialisert eine Liste mit 210 Ausgangssituationen
+     * des Spiels Game30, indem jeweils die ersten zwei Steine fix vorgegeben werden.
+     * Diese Liste wird dem SparkContext übergeben um anschließend mit der Methode map()
+     * die verteilte Verarbeitung anzustoßen.
+     * Für jede der 210 Ausganssituationen wird ein neues Game30 initialiesiert
+     * und die Methode playSpark() aufgerufen.
+     * Der Rückgabewert ist eine Liste aller gefunden Lösungen.
+     * Das Ergebnis aller Rückgabewerte ist ein JavaRDD welches im Anschluss
+     * als Textfile im HDFS abgelegt wird.
+     *
+     * @author Florian Gebhart
+     *
+     */
+	private static void playGame30Spark(String outputDir) {
+		try {
+			JavaSparkContext jsc = new JavaSparkContext(new SparkConf().setAppName("Game30"));
+            List<Integer[]> initList = new ArrayList();
+
+            //Die ersten beiden Steine werden als statisches Array fest definiert
+            //[1,2] - [1,3] - ... - [14,15]
+            //insgesamt 15*14=210 mögliche Ausgangssituationen.
+            //Das lässt bis zu 210 parallele Prozesse zu
+			for (int firstPawn = 1; firstPawn <= 15; firstPawn++) {
+				for (int secondPawn = 1; secondPawn <= 15; secondPawn++) {
+					if (firstPawn != secondPawn) {
+                        initList.add(new Integer[]{firstPawn, secondPawn});
+					}
+				}
+			}
+
+			//Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
+			JavaRDD<Integer[]> data = jsc.parallelize(initList);
+
+			//Für jedes Element der Liste wird ein neues Game30 initialisiert
+            //und die Methode playSpark aufgerufen.
+            //Der Rückgabewert von playSpark ist wiederum eine Liste aller Lösungen der jeweiligen Ausgangssituation.
+            //Die Methode saveAsTextFile sammelt am Ende die Ergebnisse aller Mapper ein
+            //und persistiert sie als Textfile im HDFS.
+			data.map(e -> new Game30().playSpark(e)).saveAsTextFile(outputDir);
+
+			jsc.close();
+
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
 	/**
 	 * Gibt die aktuelle Zeit in der Form yy-MM-dd_HHmmss zurueck.
 	 * 
@@ -250,7 +302,8 @@ public class Play {
 				+ "\n\t\t  auszufuehrenden Threads, welche zwischen 1 und 15 (inklusive) " + "\n\t\t  liegen muss"
 				+ "\n\t\t\t- Verzeichnis des lokalen Dateisystems, in welches die"
 				+ "\n\t\t\t  Ausgabedatei geschrieben werden soll"
-				+ "\n\t\t- \"hadoop\": Berechnung mit Apache Hadoop MapReduce"
+				+ "\n\t\t- \"hadoop-mapreduce\": Berechnung mit Apache Hadoop MapReduce"
+				+ "\n\t\t- \"hadoop-spark\": Berechnung mit Apache Hadoop Spark"
 				+ "\n\t\t\t- Verzeichnis des Ratespiels 30 im verteilten Dateisystem"
 				+ "\n\t- \"availableProcessors\": Gibt die Anzahl an verfuegbaren Prozessoren aus");
 	}
