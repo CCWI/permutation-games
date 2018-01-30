@@ -11,3 +11,14 @@ Aus dem Eclipse-Projekt kann mit Maven ein JAR erzeugt werden. Für die Ausführ
 		- "hadoop": Berechnung mit Apache Hadoop MapReduce
 			- Verzeichnis des Ratespiels 30 im verteilten Dateisystem
 	- "availableProcessors": Gibt die Anzahl an verfuegbaren Prozessoren aus
+
+
+Aufruf Spark:
+```
+export SPARK_MAJOR_VERSION=2
+spark-submit permutation-games-0.0.1-SNAPSHOT.jar \
+--class edu.hm.ccwi.permutationgames.Play \
+game30 \
+hadoop-spark \
+/user/user/output
+```

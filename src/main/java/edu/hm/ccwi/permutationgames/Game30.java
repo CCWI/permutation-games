@@ -20,6 +20,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.Reducer;
+import scala.xml.Null;
 
 /**
  * Diese Klasse stellt Funktionen zur Verfuegung, mit denen sich alle Loesungen
