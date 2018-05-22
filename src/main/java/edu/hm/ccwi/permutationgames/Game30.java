@@ -1,12 +1,15 @@
 
 package edu.hm.ccwi.permutationgames;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -20,7 +23,6 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.Reducer;
-import scala.xml.Null;
 
 /**
  * Diese Klasse stellt Funktionen zur Verfuegung, mit denen sich alle Loesungen
@@ -283,7 +285,7 @@ public class Game30 {
     public ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
                                               Mapper<Object, Text, Text, NullWritable>.Context hadoopContext) {
         int[] result = new int[15];
-        ArrayList<String> resultSet = new ArrayList();
+        ArrayList<String> resultSet = new ArrayList<String>();
 
         boolean withHadoop = false;
         if (hadoopContext != null) {

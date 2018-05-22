@@ -32,17 +32,55 @@ import edu.hm.ccwi.permutationgames.Game30.Game30Reducer;
  */
 public class Play {
 
-    public static void main(String[] args) {
+	/**
+	 * Argument für die Anzeige der Anzahl der verfügbaren Prozessoren
+	 */
+	private static final String ARGUMENT_AVAILABLE_PROCESSORS = "availableProcessors";
+
+	/**
+	 * Argument für die Berechnung mit Spark
+	 */
+	private static final String ARGUMENT_SPARK = "hadoop-spark";
+
+	/**
+	 * Argument für die Berechnung mit Hadoop
+	 */
+	private static final String ARGUMENT_HADOOP = "hadoop-mapreduce";
+
+	/**
+	 * Argument für die Berechnung von Spiel 30
+	 */
+	private static final String ARGUMENT_GAME30 = "game30";
+
+	/**
+	 * Name der App (Spark) bzw. des Jobs (Hadoop)
+	 */
+	private static final String JOB_NAME = "Game30";
+	
+	/**
+	 * Kurze Erklärung zu den Parameter, die mit dem Aufruf des Programms übergeben werden können.
+	 */
+    public static final String HELP_TEXT = "Bedienung des Programmes:" + "\n\t- \"game30\": Spielt das Ratespiel 30"
+	        + "\n\t\t- Für eine lokale Berechnung die Anzahl der parallel "
+	        + "\n\t\t  auszufuehrenden Threads, welche zwischen 1 und 15 (inklusive) " + "\n\t\t  liegen muss"
+	        + "\n\t\t\t- Verzeichnis des lokalen Dateisystems, in welches die"
+	        + "\n\t\t\t  Ausgabedatei geschrieben werden soll"
+	        + "\n\t\t- \"hadoop-mapreduce\": Berechnung mit Apache Hadoop MapReduce"
+	        + "\n\t\t- \"hadoop-spark\": Berechnung mit Apache Hadoop Spark"
+	        + "\n\t\t\t- Verzeichnis des Ratespiels 30 im verteilten Dateisystem"
+	        + "\n\t- \"availableProcessors\": Gibt die Anzahl an verfuegbaren Prozessoren aus";
+
+	public static void main(String[] args) {
 
         if (args.length > 2 && args.length < 4) {
-            if (args[0].equals("game30")) {
-                if (args[1].equals("hadoop-mapreduce") || args[1].equals("hadoop-spark")) {
+            if (args[0].equals(ARGUMENT_GAME30)) {
+                if (args[1].equals(ARGUMENT_HADOOP) || args[1].equals(ARGUMENT_SPARK)) {
 
                     String inputDir = args[2] + "/input/";
                     String outputDir = args[2] + "/output_" + getTime() + "/";
 
                     try {
-                        if (args[1].equals("hadoop-mapreduce"))
+                        if (args[1].equals(ARGUMENT_HADOOP))
                             playGame30ApacheHadoop(inputDir, outputDir);
                         else
                             playGame30Spark(outputDir);
@@ -90,7 +128,7 @@ public class Play {
             } else {
                 printHelp();
             }
-        } else if (args.length > 0 && args[0].equals("availableProcessors")) {
+        } else if (args.length > 0 && args[0].equals(ARGUMENT_AVAILABLE_PROCESSORS)) {
             System.out.println("# available processors: " + Runtime.getRuntime().availableProcessors());
         } else {
             printHelp();
@@ -158,7 +196,7 @@ public class Play {
         // Hadoop-Verarbeitung und kann von einem Hadoop-Cluster ausgefuehrt
         // werden
         Configuration conf = new Configuration();
-        Job job = Job.getInstance(conf, "Game30");
+        Job job = Job.getInstance(conf, JOB_NAME);
 
         job.setJarByClass(Play.class);
 
@@ -190,9 +228,9 @@ public class Play {
     }
 
     /**
-     * Die Methode playGame30Spark() initialisert eine Liste mit 210 Ausgangssituationen
+     * Die Methode playGame30Spark() initialisiert eine Liste mit 210 Ausgangssituationen
      * des Spiels Game30, indem jeweils die ersten zwei Steine fix vorgegeben werden.
-     * Diese Liste wird dem SparkContext übergeben um anschließend mit der Methode map()
+     * Diese Liste wird dem SparkContext übergeben, um anschließend mit der Methode map()
      * die verteilte Verarbeitung anzustoßen.
      * Für jede der 210 Ausganssituationen wird ein neues Game30 initialiesiert
      * und die Methode playSpark() aufgerufen.
@@ -204,8 +242,8 @@ public class Play {
      */
     private static void playGame30Spark(String outputDir) {
         try {
-            JavaSparkContext jsc = new JavaSparkContext(new SparkConf().setAppName("Game30"));
-            List<Integer[]> initList = new ArrayList();
+            JavaSparkContext sparkContext = new JavaSparkContext(new SparkConf().setMaster("local[2]").setAppName(JOB_NAME));
+            List<Integer[]> initList = new ArrayList<Integer[]>();
 
             //Die ersten beiden Steine werden als statisches Array fest definiert
             //[1,2] - [1,3] - ... - [14,15]
@@ -218,10 +256,10 @@ public class Play {
                     }
                 }
             }
-
+            
             //Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
-            JavaRDD<Integer[]> data = jsc.parallelize(initList);
-            LongAccumulator numSolutions = jsc.sc().longAccumulator();
+            JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
+            LongAccumulator numSolutions = sparkContext.sc().longAccumulator();
 
             //Für jedes Element der Liste wird ein neues Game30 initialisiert
             //und die Methode playSpark aufgerufen.
@@ -231,13 +269,14 @@ public class Play {
             //und persistiert sie als Textfile im HDFS.
             data.map(e -> {
                 StringBuilder outputString = new StringBuilder("");
-                ArrayList<String> f = new Game30().playSpark(e);
-                numSolutions.add(f.size());
-                for (String s : f) outputString.append(s + "\n");
+                ArrayList<String> solutionsFound = new Game30().playSpark(e);
+                numSolutions.add(solutionsFound.size());
+                for (String s : solutionsFound)
+                	outputString.append(s + "\n");
                 return outputString.toString();
             }).filter(x -> x.length() > 0).saveAsTextFile(outputDir);
 
-            jsc.close();
+            sparkContext.close();
 
         } catch (Exception e) {
             // TODO Auto-generated catch block
@@ -298,15 +337,7 @@ public class Play {
      * Gibt die Hilfe des Programmes aus
      */
     public static void printHelp() {
-        System.out.println("Bedienung des Programmes:" + "\n\t- \"game30\": Spielt das Ratespiel 30"
-                + "\n\t\t- Für eine lokale Berechnung die Anzahl der parallel "
-                + "\n\t\t  auszufuehrenden Threads, welche zwischen 1 und 15 (inklusive) " + "\n\t\t  liegen muss"
-                + "\n\t\t\t- Verzeichnis des lokalen Dateisystems, in welches die"
-                + "\n\t\t\t  Ausgabedatei geschrieben werden soll"
-                + "\n\t\t- \"hadoop-mapreduce\": Berechnung mit Apache Hadoop MapReduce"
-                + "\n\t\t- \"hadoop-spark\": Berechnung mit Apache Hadoop Spark"
-                + "\n\t\t\t- Verzeichnis des Ratespiels 30 im verteilten Dateisystem"
-                + "\n\t- \"availableProcessors\": Gibt die Anzahl an verfuegbaren Prozessoren aus");
+        System.out.println(HELP_TEXT);
     }
 
 }
