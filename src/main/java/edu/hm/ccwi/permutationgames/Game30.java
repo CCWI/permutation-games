@@ -1,3 +1,4 @@
+
 package edu.hm.ccwi.permutationgames;
 
 import java.io.BufferedWriter;
@@ -7,6 +8,7 @@ import java.io.IOException;
 import java.nio.file.FileAlreadyExistsException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
@@ -35,341 +37,332 @@ import org.apache.hadoop.mapreduce.Reducer;
  *
  */
 public class Game30 {
+    /**
+     * Anzahl aller Permutationen - entspricht 15! = 1.307.674.368.000 (ca.
+     * 1,307 Billionen)
+     */
+    private static final long TOTAL_NUM_PERM = factorial(15);
+    /**
+     * Menge aller Spielsteine des Spiels mit den Werten 1 bis 15
+     */
+    private static final Integer[] ALL_PAWNS = new Integer[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
+    /**
+     * Summe, welche die Spielsteine auf jeder Kanten ergeben muessen
+     */
+    private static final int SUM_OF_EDGE = 30;
 
-	/**
-	 * Anzahl aller Permutationen - entspricht 15! = 1.307.674.368.000 (ca.
-	 * 1,307 Billionen)
-	 */
-	private static final long TOTAL_NUM_PERM = factorial(15);
-	/**
-	 * Menge aller Spielsteine des Spiels mit den Werten 1 bis 15
-	 */
-	private static final Integer[] ALL_PAWNS = new Integer[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
-	/**
-	 * Summe, welche die Spielsteine auf jeder Kanten ergeben muessen
-	 */
-	private static final int SUM_OF_EDGE = 30;
+    /**
+     * Startzeit der Verarbeitung (wird nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private static long startTime = System.currentTimeMillis();
+    /**
+     * Thread-uebergreifende Zahl der bisher verarbeiteten Permutationen (wird
+     * nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private static LongAdder numExecPerm = new LongAdder();
+    /**
+     * Thread-uebergreifende  Zahl der bisher gefundenen Loesungen fuer eine
+     * uebersichtliche Ausgabe (wird nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private static AtomicInteger solutionNum = new AtomicInteger();
+    /**
+     * Pfad der Datei, welche die gefundenen Loesungen aller Threads haelt (wird
+     * nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private String outputFile = "init";
 
-	/**
-	 * Startzeit der Verarbeitung (wird nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private long startTime;
-	/**
-	 * Thread-uebergreifende Zahl der bisher verarbeiteten Permutationen (wird
-	 * nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private LongAdder numExecPerm;
-	/**
-	 * Thread-uebergreifende Zahl der bisher gefundenen Loesungen fuer eine
-	 * uebersichtliche Ausgabe (wird nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private AtomicInteger solutionNum;
+    /**
+     * Task-uebergreifende Zahl der bisher verarbeiteten Permutationen (wird nur
+     * bei Hadoop-Verarbeitung verwendet)
+     */
+    public static enum GAME30_COUNTER {
+        NUM_EXEC_PERMUTATIONS
+    }
 
-	/**
-	 * Pfad der Datei, welche die gefundenen Loesungen aller Threads haelt (wird
-	 * nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private String outputFile;
+    /**
+     * Die ersten 5 Ziffern der Anzahl aller Permutationen - entspricht ca.
+     * 15!E-8 (wird nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private static final int TOTAL_NUM_PERM_E_MINUS_8 = (int) (TOTAL_NUM_PERM / 100000000);
 
-	/**
-	 * Task-uebergreifende Zahl der bisher verarbeiteten Permutationen (wird nur
-	 * bei Hadoop-Verarbeitung verwendet)
-	 */
-	public static enum GAME30_COUNTER {
-		NUM_EXEC_PERMUTATIONS
-	};
+    /**
+     * Format fuer die Ausgabe der aktuellen Zeit (Datum und Uhrzeit) bei
+     * Fortschrittsabfragen (wird nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private static final DateFormat currentDate = new SimpleDateFormat("yy-MM-dd: HH:mm:ss");
 
-	/**
-	 * Die ersten 5 Ziffern der Anzahl aller Permutationen - entspricht ca.
-	 * 15!E-8 (wird nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private static final int TOTAL_NUM_PERM_E_MINUS_8 = (int) (TOTAL_NUM_PERM / 100000000);
+    /**
+     * Ein Pool mit einem Thread, welcher periodisch fuer Fortschrittsabfragen
+     * gestartet werden kann (wird nicht bei Hadoop-Verarbeitung verwendet)
+     */
+    private ScheduledExecutorService progressPool;
+    /**
+     * Ein Runnable-Objekt, das den Fortschritt des Spiels ausgibt (wird nicht
+     * bei Hadoop-Verarbeitung verwendet)
+     */
+    private Runnable printProgressRunnable = new Runnable() {
+        @Override
+        public void run() {
+            printProgress();
+        }
+    };
 
-	/**
-	 * Format fuer die Ausgabe der aktuellen Zeit (Datum und Uhrzeit) bei
-	 * Fortschrittsabfragen (wird nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private static final DateFormat currentDate = new SimpleDateFormat("yy-MM-dd: HH:mm:ss");
+    /**
+     * Spielt das Ratespiel 30 mit einem Thread und gibt alle Loesungen in einer
+     * Datei aus.
+     *
+     * @param outputFile Der Pfad der Ausgabedatei
+     * @throws IOException
+     * @throws FileAlreadyExistsException
+     */
+    public void playSingleThreaded(String outputFile) throws IOException {
 
-	/**
-	 * Ein Pool mit einem Thread, welcher periodisch fuer Fortschrittsabfragen
-	 * gestartet werden kann (wird nicht bei Hadoop-Verarbeitung verwendet)
-	 */
-	private ScheduledExecutorService progressPool;
-	/**
-	 * Ein Runnable-Objekt, das den Fortschritt des Spiels ausgibt (wird nicht
-	 * bei Hadoop-Verarbeitung verwendet)
-	 */
-	private Runnable printProgressRunnable = new Runnable() {
-		@Override
-		public void run() {
-			printProgress();
-		}
-	};
+        this.createOutputFile(outputFile);
 
-	/**
-	 * Spielt das Ratespiel 30 mit einem Thread und gibt alle Loesungen in einer
-	 * Datei aus.
-	 * 
-	 * @param outputFile
-	 *            Der Pfad der Ausgabedatei
-	 * @throws IOException
-	 * @throws FileAlreadyExistsException
-	 */
-	public void playSingleThreaded(String outputFile) throws IOException {
-		// Erstellt, sofern moeglich, die Ausgabedatei oder wirft andernfalls
-		// eine Exception inklusive Fehlerbeschreibung
-		try {
-			File file = new File(outputFile);
+        System.out.println("Starts processing with 1 thread...");
 
-			if (file.createNewFile()) {
-				this.outputFile = outputFile;
-			} else {
-				throw new FileAlreadyExistsException("Output file already exists!");
-			}
-		} catch (FileAlreadyExistsException e) {
-			throw e;
-		} catch (IOException e) {
-			throw new IOException("Output directory does not exist or access is forbidden for user "
-					+ System.getProperty("user.name") + "!", e);
-		}
+        // Gibt alle 5 Minuten den Spielfortschritt aus
+        progressPool = Executors.newScheduledThreadPool(1);
+        progressPool.scheduleAtFixedRate(printProgressRunnable, 0, 5, TimeUnit.MINUTES);
 
-		System.out.println("Starts processing with 1 thread...");
+        // Startet einen Solving-Thread
+        Thread thread = new Thread(createSolvingRunnable(null, ALL_PAWNS));
+        thread.start();
 
-		startTime = System.currentTimeMillis();
-		numExecPerm = new LongAdder();
-		solutionNum = new AtomicInteger();
+        // Wartet bis der Thread abgearbeitet ist
+        try {
+            thread.join();
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
 
-		// Gibt alle 5 Minuten den Spielfortschritt aus
-		progressPool = Executors.newScheduledThreadPool(1);
-		progressPool.scheduleAtFixedRate(printProgressRunnable, 0, 5, TimeUnit.MINUTES);
+        // Schliesst den Thread-Pool der Fortschrittsabfrage und gibt ein
+        // letztes Mal den (abgeschlossenen) Spielfortschritt aus
+        progressPool.shutdown();
+        printProgress();
 
-		// Startet einen Solving-Thread
-		Thread thread = new Thread(createSolvingRunnable(null, ALL_PAWNS));
-		thread.start();
+        // Gibt die tatsaechlich benoetigte Verarbeitungszeit aus
+        long processingTime = System.currentTimeMillis() - startTime;
+        String processingTimeHms = String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(processingTime),
+                TimeUnit.MILLISECONDS.toMinutes(processingTime) % TimeUnit.HOURS.toMinutes(1),
+                TimeUnit.MILLISECONDS.toSeconds(processingTime) % TimeUnit.MINUTES.toSeconds(1));
+        System.out.println("Complete!\tProcessing time: " + processingTimeHms);
+    }
 
-		// Wartet bis der Thread abgearbeitet ist
-		try {
-			thread.join();
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+    /**
+     * Spielt das Ratespiel 30 mit n Threads (0 < n < 16) und gibt alle
+     * Loesungen in einer Datei aus.
+     *
+     * @param outputFile Der Pfad der Ausgabedatei, in welche alle Threads schreiben
+     * @param numThreads Anzahl der parallel auszufuehrenden Threads, welche zwischen 1
+     *                   und 15 (inklusive) liegen muss
+     * @throws IOException
+     */
+    public void playMultiThreaded(String outputFile, int numThreads) throws IOException {
+        if (numThreads < 1 && numThreads > 15) {
+            throw new IllegalArgumentException("Parameter numThreads must be between 1 and 15 (inclusive)!");
+        }
 
-		// Schliesst den Thread-Pool der Fortschrittsabfrage und gibt ein
-		// letztes Mal den (abgeschlossenen) Spielfortschritt aus
-		progressPool.shutdown();
-		printProgress();
+        this.createOutputFile(outputFile);
 
-		// Gibt die tatsaechlich benoetigte Verarbeitungszeit aus
-		long processingTime = System.currentTimeMillis() - startTime;
-		String processingTimeHms = String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(processingTime),
-				TimeUnit.MILLISECONDS.toMinutes(processingTime) % TimeUnit.HOURS.toMinutes(1),
-				TimeUnit.MILLISECONDS.toSeconds(processingTime) % TimeUnit.MINUTES.toSeconds(1));
-		System.out.println("Complete!\tProcessing time: " + processingTimeHms);
-	}
+        System.out.println("Starts processing with " + numThreads + " thread(s)...");
 
-	/**
-	 * Spielt das Ratespiel 30 mit n Threads (0 < n < 16) und gibt alle
-	 * Loesungen in einer Datei aus.
-	 * 
-	 * @param outputFile
-	 *            Der Pfad der Ausgabedatei, in welche alle Threads schreiben
-	 * @param numThreads
-	 *            Anzahl der parallel auszufuehrenden Threads, welche zwischen 1
-	 *            und 15 (inklusive) liegen muss
-	 * @throws IOException
-	 */
-	public void playMultiThreaded(String outputFile, int numThreads) throws IOException {
-		if (numThreads < 1 && numThreads > 15) {
-			throw new IllegalArgumentException("Parameter numThreads must be between 1 and 15 (inclusive)!");
-		}
+        // Gibt alle 5 Minuten den Spielfortschritt aus
+        progressPool = Executors.newScheduledThreadPool(1);
+        progressPool.scheduleAtFixedRate(printProgressRunnable, 0, 5, TimeUnit.MINUTES);
 
-		// Erstellt, sofern moeglich, die Ausgabedatei oder wirft andernfalls
-		// eine Exception inklusive Fehlerbeschreibung
-		try {
-			File file = new File(outputFile);
+        // Ein Pool, welcher die in Parameter numThreads festgelegte Zahl an
+        // Threads dauerhaft zur Verfuegung stellt. Jene Threads werden immer
+        // wieder mit Runnable-Objekten aus einer Queue neu belegt
+        ExecutorService solvingPool = Executors.newFixedThreadPool(numThreads);
 
-			if (file.createNewFile()) {
-				this.outputFile = outputFile;
-			} else {
-				throw new FileAlreadyExistsException("Output file already exists!");
-			}
-		} catch (FileAlreadyExistsException e) {
-			throw e;
-		} catch (IOException e) {
-			throw new IOException("Output directory does not exist or access is forbidden for user "
-					+ System.getProperty("user.name") + "!", e);
-		}
+        // Laedt alle Solving-Runnable-Objekte in die Queue des solvingPools
+        for (int i = 1; i <= 15; i++) {
+            solvingPool.submit(createSolvingRunnable(new Integer[]{i}, removeElement(ALL_PAWNS, i - 1)));
+        }
 
-		System.out.println("Starts processing with " + numThreads + " thread(s)...");
+        // Schliesst den solvingPool, wenn alle Threads sowie die Queue
+        // abgearbeitet sind
+        solvingPool.shutdown();
+        try {
+            solvingPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
 
-		startTime = System.currentTimeMillis();
-		numExecPerm = new LongAdder();
-		solutionNum = new AtomicInteger();
+        // Schliesst den Thread-Pool der Fortschrittsabfrage und gibt ein
+        // letztes Mal den (abgeschlossenen) Spielfortschritt aus
+        progressPool.shutdown();
+        printProgress();
 
-		// Gibt alle 5 Minuten den Spielfortschritt aus
-		progressPool = Executors.newScheduledThreadPool(1);
-		progressPool.scheduleAtFixedRate(printProgressRunnable, 0, 5, TimeUnit.MINUTES);
+        // Gibt die tatsaechlich benoetigte Verarbeitungszeit aus
+        long processingTime = System.currentTimeMillis() - startTime;
+        String processingTimeHms = String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(processingTime),
+                TimeUnit.MILLISECONDS.toMinutes(processingTime) % TimeUnit.HOURS.toMinutes(1),
+                TimeUnit.MILLISECONDS.toSeconds(processingTime) % TimeUnit.MINUTES.toSeconds(1));
+        System.out.println("Complete!\tProcessing time: " + processingTimeHms);
+    }
 
-		// Ein Pool, welcher die in Parameter numThreads festgelegte Zahl an
-		// Threads dauerhaft zur Verfuegung stellt. Jene Threads werden immer
-		// wieder mit Runnable-Objekten aus einer Queue neu belegt
-		ExecutorService solvingPool = Executors.newFixedThreadPool(numThreads);
+    /**
+     * Loescht aus dem uebergebenen {@link java.lang.Integer Integer}-Array das
+     * Element auf der angegebenen Position und gibt ein verkuerztes
+     * {@link java.lang.Integer Integer}-Array zurueck.
+     *
+     * @param original   Das Array, aus dem ein Element entfernt werden soll
+     * @param elementPos Index des Elements, das zu entfernen ist
+     * @return Neues, verkuerztes {@link java.lang.Integer Integer}-Array ohne
+     * das zu loeschende Element
+     */
+    private static Integer[] removeElement(Integer[] original, int elementPos) {
+        Integer[] n = new Integer[original.length - 1];
+        System.arraycopy(original, 0, n, 0, elementPos);
+        System.arraycopy(original, elementPos + 1, n, elementPos, original.length - elementPos - 1);
+        return n;
+    }
 
-		// Laedt alle Solving-Runnable-Objekte in die Queue des solvingPools
-		for (int i = 1; i <= 15; i++) {
-			solvingPool.submit(createSolvingRunnable(new Integer[] { i }, removeElement(ALL_PAWNS, i - 1)));
-		}
+    private void createOutputFile(String outputFile) throws IOException {
+        // Erstellt, sofern moeglich, die Ausgabedatei oder wirft andernfalls
+        // eine Exception inklusive Fehlerbeschreibung
+        try {
+            File file = new File(outputFile);
 
-		// Schliesst den solvingPool, wenn alle Threads sowie die Queue
-		// abgearbeitet sind
-		solvingPool.shutdown();
-		try {
-			solvingPool.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
-		} catch (InterruptedException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+            if (file.createNewFile()) {
+                this.outputFile = outputFile;
+            } else {
+                throw new FileAlreadyExistsException("Output file already exists!");
+            }
+        } catch (FileAlreadyExistsException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new IOException("Output directory does not exist or access is forbidden for user "
+                    + System.getProperty("user.name") + "!", e);
+        }
+    }
 
-		// Schliesst den Thread-Pool der Fortschrittsabfrage und gibt ein
-		// letztes Mal den (abgeschlossenen) Spielfortschritt aus
-		progressPool.shutdown();
-		printProgress();
+    /**
+     * Erstellt ein Runnable-Objekt, das die parallele Ausfuehrung der Methode
+     * {@link #findSolutions(Integer[], Integer[], Context) findSolutions}
+     * ermoeglicht. Die Summe aus den Laengen der Arrays
+     * <code>staticLeadPawns</code> und <code>pawnsToPerm</code> darf 15 nicht
+     * ueberschreiten.
+     *
+     * @param staticLeadPawns Folge von Spielsteinen, welche nicht zu permutieren ist,
+     *                        sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
+     *                        wird, um moegliche Loesungen zu bilden
+     * @param pawnsToPerm     Menge der Spielsteine, welche im ausfuehrenden Thread
+     *                        permutiert werden soll, um moegliche Loesungen zu finden
+     * @return Runnable-Objekt zur Ausfuehrung der Methode
+     * {@link #findSolutions(Integer[], Integer[], Context)
+     * findSolutions}
+     */
+    private Runnable createSolvingRunnable(final Integer[] staticLeadPawns, final Integer[] pawnsToPerm) {
+        return new Runnable() {
+            @Override
+            public void run() {
+                findSolutions(staticLeadPawns, pawnsToPerm, null);
+            }
+        };
+    }
 
-		// Gibt die tatsaechlich benoetigte Verarbeitungszeit aus
-		long processingTime = System.currentTimeMillis() - startTime;
-		String processingTimeHms = String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(processingTime),
-				TimeUnit.MILLISECONDS.toMinutes(processingTime) % TimeUnit.HOURS.toMinutes(1),
-				TimeUnit.MILLISECONDS.toSeconds(processingTime) % TimeUnit.MINUTES.toSeconds(1));
-		System.out.println("Complete!\tProcessing time: " + processingTimeHms);
-	}
+    /**
+     * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
+     * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
+     * wird, werden die Loesungen in diesen geschrieben, wenn nicht
+     * (<code>hadoopContext</code> ist <code>null</code>), erfolgt die Ausgabe
+     * in das lokale Dateisystem.
+     *
+     * @param staticLeadPawns Folge von Spielsteinen, welche nicht zu permutieren ist,
+     *                        sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
+     *                        wird, um moegliche Loesungen zu bilden
+     * @param pawnsToPerm     Menge der Spielsteinen, welche es zu permutieren gilt, um
+     *                        moegliche Loesungen zu finden
+     * @param hadoopContext   Hadoop-Context, in welchen es die gefundenen Loesungen
+     *                        auszugeben gilt - falls <code>null</code>, erfolgt die Ausgabe
+     *                        in das lokale Dateisystem
+     */
+    public ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
+                                              Mapper<Object, Text, Text, NullWritable>.Context hadoopContext) {
+        int[] result = new int[15];
+        ArrayList<String> resultSet = new ArrayList<String>();
 
-	/**
-	 * Loescht aus dem uebergebenen {@link java.lang.Integer Integer}-Array das
-	 * Element auf der angegebenen Position und gibt ein verkuerztes
-	 * {@link java.lang.Integer Integer}-Array zurueck.
-	 * 
-	 * @param original
-	 *            Das Array, aus dem ein Element entfernt werden soll
-	 * @param elementPos
-	 *            Index des Elements, das zu entfernen ist
-	 * @return Neues, verkuerztes {@link java.lang.Integer Integer}-Array ohne
-	 *         das zu loeschende Element
-	 */
-	private static Integer[] removeElement(Integer[] original, int elementPos) {
-		Integer[] n = new Integer[original.length - 1];
-		System.arraycopy(original, 0, n, 0, elementPos);
-		System.arraycopy(original, elementPos + 1, n, elementPos, original.length - elementPos - 1);
-		return n;
-	}
+        boolean withHadoop = false;
+        if (hadoopContext != null) {
+            withHadoop = true;
+        }
 
-	/**
-	 * Erstellt ein Runnable-Objekt, das die parallele Ausfuehrung der Methode
-	 * {@link #findSolutions(Integer[], Integer[], Context) findSolutions}
-	 * ermoeglicht. Die Summe aus den Laengen der Arrays
-	 * <code>staticLeadPawns</code> und <code>pawnsToPerm</code> darf 15 nicht
-	 * ueberschreiten.
-	 * 
-	 * @param staticLeadPawns
-	 *            Folge von Spielsteinen, welche nicht zu permutieren ist,
-	 *            sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
-	 *            wird, um moegliche Loesungen zu bilden
-	 * @param pawnsToPerm
-	 *            Menge der Spielsteine, welche im ausfuehrenden Thread
-	 *            permutiert werden soll, um moegliche Loesungen zu finden
-	 * @return Runnable-Objekt zur Ausfuehrung der Methode
-	 *         {@link #findSolutions(Integer[], Integer[], Context)
-	 *         findSolutions}
-	 */
-	private Runnable createSolvingRunnable(final Integer[] staticLeadPawns, final Integer[] pawnsToPerm) {
-		return new Runnable() {
-			@Override
-			public void run() {
-				findSolutions(staticLeadPawns, pawnsToPerm, null);
-			}
-		};
-	}
+        // Belegt die Permutation mit den statischen Spielsteinen vor
+        int leadPawnsLength = 0;
+        if (staticLeadPawns != null) {
+            leadPawnsLength = staticLeadPawns.length;
+            for (int i = 0; i < leadPawnsLength; i++) {
+                result[i] = staticLeadPawns[i];
+            }
+        }
 
-	/**
-	 * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
-	 * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
-	 * wird, werden die Loesungen in diesen geschrieben, wenn nicht
-	 * (<code>hadoopContext</code> ist <code>null</code>), erfolgt die Ausgabe
-	 * in das lokale Dateisystem.
-	 * 
-	 * @param staticLeadPawns
-	 *            Folge von Spielsteinen, welche nicht zu permutieren ist,
-	 *            sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
-	 *            wird, um moegliche Loesungen zu bilden
-	 * @param pawnsToPerm
-	 *            Menge der Spielsteinen, welche es zu permutieren gilt, um
-	 *            moegliche Loesungen zu finden
-	 * @param hadoopContext
-	 *            Hadoop-Context, in welchen es die gefundenen Loesungen
-	 *            auszugeben gilt - falls <code>null</code>, erfolgt die Ausgabe
-	 *            in das lokale Dateisystem
-	 */
-	public void findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
-			Mapper<Object, Text, Text, NullWritable>.Context hadoopContext) {
-		boolean withHadoop = false;
-		if (hadoopContext != null) {
-			withHadoop = true;
-		}
+        int permPawnsLength = pawnsToPerm.length;
 
-		// Eine Permutation, die es zu ueberpruefen gilt
-		int[] result = new int[15];
+        // Fuehrt iterative Teilpermutationen durch, verbindet diese mit den
+        // statischen Spielsteinen und testet die daraus entstehenden
+        // vollstaendigen Permutationen auf deren Erfuellung der Spielregeln
+        Permutations<Integer> perm = new Permutations<Integer>(pawnsToPerm);
 
-		// Belegt die Permutation mit den statischen Spielsteinen vor
-		int leadPawnsLength = 0;
-		if (staticLeadPawns != null) {
-			leadPawnsLength = staticLeadPawns.length;
-			for (int i = 0; i < leadPawnsLength; i++) {
-				result[i] = staticLeadPawns[i];
-			}
-		}
+        // Eine Permutation, die es zu ueberpruefen gilt
+        Integer[] aPerm;
+        while (perm.hasNext()) {
+            // Erfragt eine weitere Teilpermutation
+            aPerm = perm.next();
 
-		int permPawnsLength = pawnsToPerm.length;
+            // Vervollstaendigt eine Permutation mit der Teilpermutation
+            for (int i = 0; i < permPawnsLength; i++) {
+                result[leadPawnsLength + i] = aPerm[i];
+            }
 
-		// Fuehrt iterative Teilpermutationen durch, verbindet diese mit den
-		// statischen Spielsteinen und testet die daraus entstehenden
-		// vollstaendigen Permutationen auf deren Erfuellung der Spielregeln
-		Permutations<Integer> perm = new Permutations<Integer>(pawnsToPerm);
-		Integer[] aPerm;
-		while (perm.hasNext()) {
-			// Erfragt eine weitere Teilpermutation
-			aPerm = perm.next();
+            // Aktuallisiert den Fortschritt der Verarbeitung
+            if (withHadoop) {
+                hadoopContext.getCounter(GAME30_COUNTER.NUM_EXEC_PERMUTATIONS).increment(1);
+            } else {
+                numExecPerm.increment();
+            }
 
-			// Vervollstaendigt eine Permutation mit der Teilpermutation
-			for (int i = 0; i < permPawnsLength; i++) {
-				result[leadPawnsLength + i] = aPerm[i];
-			}
+            // Testet, ob die Permutation die Spielregeln erfuellt - falls ja,
+            // wird sie dem Hadoop-Context ueber- bzw. ins lokale Dateisystem
+            // ausgegeben
+            if (rulesSatisfied(result)) {
+                resultSet.add(getPermutationString(result));
+                if (withHadoop) {
+                    try {
+                        hadoopContext.write(new Text(getPermutationString(result)), NullWritable.get());
+                    } catch (IOException | InterruptedException e) {
+                        // TODO Auto-generated catch block
+                        e.printStackTrace();
+                    }
+                } else {
+                    solutionNum.incrementAndGet();
+                    if (!outputFile.equals("init")) {
+                        writeSolutionToLocalFs(getPermutationString(result));
+                    }
+                }
+            }
+        }
+        return resultSet;
+    }
 
-			// Aktuallisiert den Fortschritt der Verarbeitung
-			if (withHadoop) {
-				hadoopContext.getCounter(GAME30_COUNTER.NUM_EXEC_PERMUTATIONS).increment(1);
-			} else {
-				numExecPerm.increment();
-			}
 
-			// Testet, ob die Permutation die Spielregeln erfuellt - falls ja,
-			// wird sie dem Hadoop-Context ueber- bzw. ins lokale Dateisystem
-			// ausgegeben
-			if (rulesSatisfied(result)) {
-				if (withHadoop) {
-					try {
-						hadoopContext.write(new Text(getPermutationString(result)), NullWritable.get());
-					} catch (IOException | InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				} else {
-					solutionNum.incrementAndGet();
-					writeSolutionToLocalFs(getPermutationString(result));
-				}
-			}
-		}
-	}
+    public ArrayList<String> playSpark(Integer[] staticLeadPawns) {
+
+        Integer[] pawnsToPerm = ALL_PAWNS;
+
+        // Loescht die statischen Steine aus der Menge aller Spielsteine, um
+        // die zu permutierende Menge zu erhalten
+        for (Integer staticLeadPawn : staticLeadPawns) {
+            pawnsToPerm = removeElement(pawnsToPerm, Arrays.asList(pawnsToPerm).indexOf(staticLeadPawn));
+        }
+
+        return new Game30().findSolutions(staticLeadPawns, pawnsToPerm, null);
+    }
+
 
 	/**
 	 * Hadoop-Mapper, welcher statische Spielsteine zugeteilt bekommt und fuer
@@ -481,8 +474,10 @@ public class Game30 {
 	 */
 	private static String getPermutationString(int[] perm) {
 		return String.format(
-				"%02d | %02d | %02d | %02d\n" + "%02d | %02d | %02d | %02d\n" + "%02d | %02d | %02d | %02d\n"
-						+ "   | %02d | %02d | %02d\n\n",
+				"%02d | %02d | %02d | %02d\n" +
+                   "%02d | %02d | %02d | %02d\n" +
+                   "%02d | %02d | %02d | %02d\n" +
+                     "   | %02d | %02d | %02d\n",
 				perm[0], perm[1], perm[2], perm[3], perm[4], perm[5], perm[6], perm[7], perm[8], perm[9], perm[10],
 				perm[11], perm[12], perm[13], perm[14]);
 	}
@@ -535,5 +530,4 @@ public class Game30 {
 			return 0;
 		}
 	}
-
 }
