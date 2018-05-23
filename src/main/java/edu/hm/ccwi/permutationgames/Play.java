@@ -242,8 +242,18 @@ public class Play {
      */
     private static void playGame30Spark(String outputDir) {
         try {
-            JavaSparkContext sparkContext = new JavaSparkContext(new SparkConf().setMaster("local[2]").setAppName(JOB_NAME));
-            List<Integer[]> initList = new ArrayList<Integer[]>();
+        	// Statisches Array mit den möglichen Kombinationen der ersten beiden Spielsteine
+        	List<Integer[]> initList = new ArrayList<Integer[]>();
+        	
+        	// Konfiguration für Spark
+        	SparkConf sparkConf = new SparkConf();
+        	sparkConf.setAppName(JOB_NAME);
+        	// Lokale Ausführung, sofern kein Master gesetzt wurde
+        	if (!sparkConf.contains("spark.master")) {
+        		sparkConf.set("spark.master", "local[2]");
+        	}
+        	// Spark Context für die Ausfürhung mit Spark
+            JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
 
             //Die ersten beiden Steine werden als statisches Array fest definiert
             //[1,2] - [1,3] - ... - [14,15]
@@ -268,13 +278,15 @@ public class Play {
             //Die Methode saveAsTextFile sammelt am Ende die Ergebnisse aller Mapper ein
             //und persistiert sie als Textfile im HDFS.
             data.map(e -> {
-                StringBuilder outputString = new StringBuilder("");
+                StringBuilder outputString = new StringBuilder();
                 ArrayList<String> solutionsFound = new Game30().playSpark(e);
                 numSolutions.add(solutionsFound.size());
                 for (String s : solutionsFound)
                 	outputString.append(s + "\n");
                 return outputString.toString();
             }).filter(x -> x.length() > 0).saveAsTextFile(outputDir);
+            
+            System.out.println("Solutions found: " + numSolutions);
 
             sparkContext.close();
 
