@@ -1,4 +1,5 @@
 # permutation-games
+[![Build Status](https://travis-ci.org/CCWI/permutation-games.svg)](https://travis-ci.org/CCWI/permutation-games)
 
 Aus dem Eclipse-Projekt kann mit Maven ein JAR erzeugt werden. Für die Ausführung der Hadoop-Variante muss Hadoop auf dem System installiert sein. Dem Programm können folgende Parameter übergeben werden:
 
