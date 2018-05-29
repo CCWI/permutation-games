@@ -17,12 +17,15 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.spark.api.java.*;
+import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.util.LongAccumulator;
 
 import edu.hm.ccwi.permutationgames.Game30.Game30Mapper;
 import edu.hm.ccwi.permutationgames.Game30.Game30Reducer;
+import edu.hm.ccwi.permutationgames.Game30.Game30Spark;
 
 /**
  * Mit dieser Klasse koennen verschiedene Spiel mit Permutationen auf Basis
@@ -55,7 +58,12 @@ public class Play {
 	/**
 	 * Name der App (Spark) bzw. des Jobs (Hadoop)
 	 */
-	private static final String JOB_NAME = "Game30";
+	public static final String JOB_NAME = "Game30";
+	
+	/**
+	 * Logger für die Ausgabe von Log-Meldungen mit Log4j
+	 */
+	private static Logger logger = Logger.getLogger(Play.class);
 	
 	/**
 	 * Kurze Erklärung zu den Parameter, die mit dem Aufruf des Programms übergeben werden können.
@@ -255,10 +263,10 @@ public class Play {
         	// Spark Context für die Ausfürhung mit Spark
             JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
 
-            //Die ersten beiden Steine werden als statisches Array fest definiert
-            //[1,2] - [1,3] - ... - [14,15]
-            //insgesamt 15*14=210 mögliche Ausgangssituationen.
-            //Das lässt bis zu 210 parallele Prozesse zu
+            // Die ersten beiden Steine werden als statisches Array fest definiert
+            // [1,2] - [1,3] - ... - [14,15]
+            // insgesamt 15*14=210 mögliche Ausgangssituationen.
+            // Das lässt bis zu 210 parallele Prozesse zu
             for (int firstPawn = 1; firstPawn <= 15; firstPawn++) {
                 for (int secondPawn = 1; secondPawn <= 15; secondPawn++) {
                     if (firstPawn != secondPawn) {
@@ -267,34 +275,37 @@ public class Play {
                 }
             }
             
-            //Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
+            // Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
             JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
-            LongAccumulator numSolutions = sparkContext.sc().longAccumulator();
+            LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
-            //Für jedes Element der Liste wird ein neues Game30 initialisiert
-            //und die Methode playSpark aufgerufen.
-            //Der Rückgabewert von playSpark ist wiederum eine Liste
-            //aller Lösungen der jeweiligen Ausgangssituation.
-            //Die Methode saveAsTextFile sammelt am Ende die Ergebnisse aller Mapper ein
-            //und persistiert sie als Textfile im HDFS.
-            data.map(e -> {
-                StringBuilder outputString = new StringBuilder();
-                ArrayList<String> solutionsFound = new Game30().playSpark(e);
-                numSolutions.add(solutionsFound.size());
-                for (String s : solutionsFound)
-                	outputString.append(s + "\n");
-                return outputString.toString();
-            }).filter(x -> x.length() > 0).saveAsTextFile(outputDir);
+            // Für jedes Element der Liste wird ein neues Game30 initialisiert
+            // und die Methode playSpark aufgerufen.
+            // Der Rückgabewert von playSpark ist wiederum eine Liste
+            // aller Lösungen der jeweiligen Ausgangssituation.
+			JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfSolutionsFound));
             
-            System.out.println("Solutions found: " + numSolutions);
+			// Über die Methode filter werden die Elemente mit den 
+			// tatsächlichen (nicht leeren) Lösungen herausgefiltert.
+			JavaRDD<String> nonEmptySolutions = solutionText.filter(Game30Spark.nonEmptySolutions);
+			
+			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
+			// die Ergebnisse tatsächlich berechnet und als Textfile 
+			// im HDFS gespeichert.
+			nonEmptySolutions.saveAsTextFile(outputDir);
+            
+			// Log-Ausgabe der Anzahl der gefundenen Lösungen
+            logger.info("Solutions found: " + numberOfSolutionsFound);
 
+            // Schließen des Spark-Kontext
             sparkContext.close();
 
         } catch (Exception e) {
-            // TODO Auto-generated catch block
             e.printStackTrace();
         }
     }
+    
+    
 
     /**
      * Gibt die aktuelle Zeit in der Form yy-MM-dd_HHmmss zurueck.

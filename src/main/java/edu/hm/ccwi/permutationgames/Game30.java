@@ -23,6 +23,9 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.spark.api.java.function.FlatMapFunction;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.util.LongAccumulator;
 
 /**
  * Diese Klasse stellt Funktionen zur Verfuegung, mit denen sich alle Loesungen
@@ -350,20 +353,6 @@ public class Game30 {
     }
 
 
-    public ArrayList<String> playSpark(Integer[] staticLeadPawns) {
-
-        Integer[] pawnsToPerm = ALL_PAWNS;
-
-        // Loescht die statischen Steine aus der Menge aller Spielsteine, um
-        // die zu permutierende Menge zu erhalten
-        for (Integer staticLeadPawn : staticLeadPawns) {
-            pawnsToPerm = removeElement(pawnsToPerm, Arrays.asList(pawnsToPerm).indexOf(staticLeadPawn));
-        }
-
-        return new Game30().findSolutions(staticLeadPawns, pawnsToPerm, null);
-    }
-
-
 	/**
 	 * Hadoop-Mapper, welcher statische Spielsteine zugeteilt bekommt und fuer
 	 * die Vervollstaendigung der restlichen Felder Permutationen durchfuehrt,
@@ -423,6 +412,52 @@ public class Game30 {
 			solutionNum++;
 			context.write(new Text("Loesung " + solutionNum + ":\n" + key), NullWritable.get());
 		}
+	}
+	
+	/**
+	 * Diese Klasse stellt Funktionen für die Berechnung
+	 * der Lösungen des Ratespiels 30 in Spark bereit.
+	 * @author Florian Gebhart
+	 * @author Max-Emanuel Keller
+	 *
+	 */
+	public static class Game30Spark {
+		/**
+		 * Methode, welche statische Spielsteine zugeteilt bekommt und fuer
+		 * die Vervollstaendigung der restlichen Felder Permutationen durchfuehrt,
+		 * um Loesungen fuer das Ratespiel 30 zu finden. Hierzu wird die Methode
+		 * {@link #findSolutions(Integer[], Integer[], Context) findSolutions}
+		 * verwendet, welche die gefundenen Lösungen als String-Array zurückliefert.
+		 * @param numSolutions Akkumulator, der die Anzahl der gefundenen Lösungen zählt
+		 * @return Spark-Funktion für die Berechnung der Lösungen
+		 */
+		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numSolutions) {
+	    	return e -> {
+	    		Game30 game30 = new Game30();
+	            ArrayList<String> solutionsFound;
+	            
+	            Integer[] pawnsToPerm = ALL_PAWNS;
+
+	            // Loescht die statischen Steine aus der Menge aller Spielsteine, um
+	            // die zu permutierende Menge zu erhalten
+	            for (Integer staticLeadPawn : e) {
+	                pawnsToPerm = removeElement(pawnsToPerm, Arrays.asList(pawnsToPerm).indexOf(staticLeadPawn));
+	            }
+	            
+	            // Berechnung der Lösungen für die übergebenen Steine
+	            solutionsFound = game30.findSolutions(e, pawnsToPerm, null);
+	            
+	            // Anzahl gefundener Lösungen zum Akkumulator hinzufügen
+	            numSolutions.add(solutionsFound.size());
+	            
+	            return solutionsFound.iterator();
+	        };
+	    }
+		
+		/**
+		 * Spark-Funktion für das Herausfiltern der nicht leeren Lösungen.
+		 */
+		public static final Function<String, Boolean> nonEmptySolutions = x -> x.length() > 0;
 	}
 
 	/**

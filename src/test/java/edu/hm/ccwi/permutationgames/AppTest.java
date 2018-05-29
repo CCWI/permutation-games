@@ -1,9 +1,15 @@
 package edu.hm.ccwi.permutationgames;
 
 import java.util.ArrayList;
+import java.util.List;
 
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.util.LongAccumulator;
 import org.junit.Test;
 
+import edu.hm.ccwi.permutationgames.Game30.Game30Spark;
 import junit.framework.TestCase;
 
 public class AppTest extends TestCase
@@ -63,72 +69,88 @@ public class AppTest extends TestCase
         actualResult1 = game.findSolutions(new Integer[]{3,4,10,13,15}, new Integer[]{1,2,5,6,7,8,9,11,12,14}, null);
         actualResult2 = game.findSolutions(new Integer[]{5,6,9,10}, new Integer[]{1,2,3,4,7,8,11,12,13,14,15}, null);
 
-        assertEquals(expectedResult1.size(), 2);
+        assertEquals(expectedResult1.size(), actualResult1.size());
         assertEquals(expectedResult1, actualResult1);
 
-        assertEquals(expectedResult2.size(), 4);
+        assertEquals(expectedResult2.size(), expectedResult2.size());
         assertEquals(expectedResult2, actualResult2);
     }
+    
+    @Test
+    public void testSparkFindOneSolution() {
+    	ArrayList<String> actualResult1 = new ArrayList<String>();
+        ArrayList<String> expectedResult1 = new ArrayList<String>();
+        
+        expectedResult1.add("03 | 04 | 08 | 15\n"
+						+ "13 | 10 | 06 | 01\n"
+						+ "14 | 09 | 05 | 02\n"
+						+ "   | 07 | 11 | 12\n");
+        expectedResult1.add("03 | 04 | 08 | 15\n"
+        				+ "14 | 09 | 05 | 02\n"
+        				+ "13 | 10 | 06 | 01\n"
+        				+ "   | 07 | 11 | 12\n");
+        expectedResult1.add("03 | 04 | 09 | 14\n"
+						+ "15 | 08 | 05 | 02\n"
+						+ "12 | 11 | 06 | 01\n"
+						+ "   | 07 | 10 | 13\n");
+        expectedResult1.add("03 | 04 | 10 | 13\n"
+						+ "12 | 07 | 09 | 02\n"
+						+ "15 | 08 | 06 | 01\n"
+						+ "   | 11 | 05 | 14\n");
+        expectedResult1.add("03 | 04 | 10 | 13\n"
+						+ "15 | 06 | 08 | 01\n"
+						+ "12 | 09 | 07 | 02\n"
+						+ "   | 11 | 05 | 14\n");
+        expectedResult1.add("03 | 04 | 10 | 13\n"
+						+ "15 | 08 | 06 | 01\n"
+						+ "12 | 11 | 05 | 02\n"
+						+ "   | 07 | 09 | 14\n");
+        expectedResult1.add("03 | 04 | 11 | 12\n"
+						+ "13 | 07 | 08 | 02\n"
+						+ "14 | 10 | 05 | 01\n"
+						+ "   | 09 | 06 | 15\n");
+        expectedResult1.add("03 | 04 | 11 | 12\n"
+						+ "14 | 07 | 08 | 01\n"
+						+ "13 | 10 | 05 | 02\n"
+						+ "   | 09 | 06 | 15\n");
+        
+    	// Statisches Array mit den möglichen Kombinationen der ersten beiden Spielsteine
+    	List<Integer[]> initList = new ArrayList<Integer[]>();
+    	
+    	// Konfiguration für Spark
+    	SparkConf sparkConf = new SparkConf();
+    	sparkConf.setAppName(Play.JOB_NAME);
+    	sparkConf.set("spark.master", "local[2]");
+    	
+    	// Spark Context für die Ausfürhung mit Spark
+    	JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
+    	
+    	// Hinzufügen der ersten beiden Steine
+    	initList.add(new Integer[]{3,4});
+    	
+    	//Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
+        JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
+        LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
-//    @Test
-//    public void testInvalidArguments() {
-//
-//        ByteArrayOutputStream output = new ByteArrayOutputStream();
-//        System.setOut(new PrintStream(output));
-//
-//        String help = Play.HELP_TEXT;
-//
-//        // no arguments
-//        Play.main(new String[]{});
-//        assertEquals(help.toString(), output.toString());
-//        output.reset();
-//
-//        // unknown argument
-//        Play.main(new String[]{"play"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // only game30
-//        Play.main(new String[]{"game30"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // game30 with unknown mode to play
-//        Play.main(new String[]{"game30", "ehhh"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // more then 3 args
-//        Play.main(new String[]{"game30", "hadoop-spark", "/user/hadoop/input", "/user/hadoop/output"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        Play.main(new String[]{"game30", "1", "/user/hadoop/input", "/user/hadoop/output"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // hadoop-spark without path
-//        Play.main(new String[]{"game30", "hadoop-spark"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // hadoop-mapreduce without path
-//        Play.main(new String[]{"game30", "hadoop-mapreduce"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // Thread game without path
-//        Play.main(new String[]{"game30", "5"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        // Game30 with invalid number of threads
-//        Play.main(new String[]{"game30", "0", "/user/home"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//
-//        Play.main(new String[]{"game30", "16", "/user/home"});
-//        assertEquals(help, output.toString());
-//        output.reset();
-//    }
+        // Für jedes Element der Liste wird ein neues Game30 initialisiert
+        // und die Methode playSpark aufgerufen.
+        // Der Rückgabewert von playSpark ist wiederum eine Liste
+        // aller Lösungen der jeweiligen Ausgangssituation.
+		JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfSolutionsFound));
+        
+		// Über die Methode filter werden die Elemente mit den 
+		// tatsächlichen (nicht leeren) Lösungen herausgefiltert.
+		JavaRDD<String> nonEmptySolutions = solutionText.filter(Game30Spark.nonEmptySolutions);
+		
+		// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
+		// die Ergebnisse tatsächlich berechnet und im Treiberprogramm gesammelt.
+		actualResult1.addAll(nonEmptySolutions.collect());
+        
+        assertEquals(numberOfSolutionsFound.value(), Long.valueOf(expectedResult1.size()));
+        assertEquals(expectedResult1.size(), actualResult1.size());
+        assertEquals(expectedResult1, actualResult1);
+
+        // Schließen des Spark-Kontext
+        sparkContext.close();
+    }
 }
