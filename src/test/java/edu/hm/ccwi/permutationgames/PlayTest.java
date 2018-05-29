@@ -12,7 +12,7 @@ import org.junit.Test;
 import edu.hm.ccwi.permutationgames.Game30.Game30Spark;
 import junit.framework.TestCase;
 
-public class AppTest extends TestCase
+public class PlayTest extends TestCase
 {
     @Test
 	public void testFindOneSolution()

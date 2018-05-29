@@ -43,12 +43,12 @@ public class Play {
 	/**
 	 * Argument für die Berechnung mit Spark
 	 */
-	private static final String ARGUMENT_SPARK = "hadoop-spark";
+	private static final String ARGUMENT_SPARK = "spark";
 
 	/**
 	 * Argument für die Berechnung mit Hadoop
 	 */
-	private static final String ARGUMENT_HADOOP = "hadoop-mapreduce";
+	private static final String ARGUMENT_HADOOP = "hadoop";
 
 	/**
 	 * Argument für die Berechnung von Spiel 30
