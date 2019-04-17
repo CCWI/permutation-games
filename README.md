@@ -16,6 +16,16 @@ Für die Ausführung können bis zu drei Parameter übergeben werden.
 3. Parameter
   * **Verzeichnis** Verzeichnis im verteilten Dateisystem für die Ein- und Ausgabe des Ratespiels 30 (nur für Hadoop und Spark erforderlich)
 
+## Ausführung mit Hadoop auf YARN
+```bash
+yarn 
+	jar 
+	permutation-games-0.0.1-SNAPSHOT.jar 
+	game30 
+	hadoop 
+	output
+```
+
 ## Ausführung mit Spark auf YARN
 ```bash
 export SPARK_MAJOR_VERSION=2
@@ -25,6 +35,6 @@ spark-submit
 	--num-executors 8 
 	permutation-games-0.0.1-SNAPSHOT.jar 
 	game30 
-	hadoop-spark 
+	spark 
 	output
 ```
