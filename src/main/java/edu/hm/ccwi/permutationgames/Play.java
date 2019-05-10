@@ -295,7 +295,7 @@ public class Play {
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textfile
 			// im HDFS gespeichert.
-			nonEmptySolutions.coalesce(1).saveAsTextFile(outputDir);
+			nonEmptySolutions.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
@@ -368,7 +368,7 @@ public class Play {
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textfile
 			// im HDFS gespeichert.
-			nonEmptySolutions.coalesce(1).saveAsTextFile(outputDir);
+			nonEmptySolutions.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
