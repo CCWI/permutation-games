@@ -430,6 +430,8 @@ public class Game30 {
 		 * verwendet, welche die gefundenen Lösungen als String-Array zurückliefert.
 		 * @param numSolutions Akkumulator, der die Anzahl der gefundenen Lösungen zählt
 		 * @return Spark-Funktion für die Berechnung der Lösungen
+		 * 
+		 * @author Max-Emanuel Keller
 		 */
 		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numSolutions) {
 	    	return e -> {

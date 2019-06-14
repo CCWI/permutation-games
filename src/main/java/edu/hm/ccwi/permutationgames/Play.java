@@ -244,16 +244,16 @@ public class Play {
 	 * fix vorgegeben werden. Diese Liste wird dem SparkContext übergeben, um
 	 * anschließend mit der Methode map() die verteilte Verarbeitung anzustoßen. Für
 	 * jede der 210 Ausganssituationen wird ein neues Game30 initialiesiert und die
-	 * Methode playSpark() aufgerufen. Der Rückgabewert ist eine Liste aller
+	 * Methode findSolutions() aufgerufen. Der Rückgabewert ist eine Liste aller
 	 * gefunden Lösungen. Das Ergebnis aller Rückgabewerte ist ein JavaRDD welches
 	 * im Anschluss als Textfile im HDFS abgelegt wird.
+	 * @param outputDir Verzeichnis, in dem die gefunden Lösungen als Textdatei abgelegt werden
 	 *
 	 * @author Florian Gebhart
 	 */
 	private static void playGame30Spark(String outputDir) {
 		try {
-			// Statisches Array mit den möglichen Kombinationen der ersten beiden
-			// Spielsteine
+			// Liste für die möglichen Kombinationen der statischen Steine
 			List<Integer[]> initList = new ArrayList<Integer[]>();
 
 			// Konfiguration für Spark
@@ -263,13 +263,12 @@ public class Play {
 			if (!sparkConf.contains("spark.master")) {
 				sparkConf.set("spark.master", "local[2]");
 			}
-			// Spark Context für die Ausfürhung mit Spark
+			// Spark Kontext für die Ausführung mit Spark
 			JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
 
-			// Die ersten beiden Steine werden als statisches Array fest definiert
-			// [1,2] - [1,3] - ... - [15,14]
-			// insgesamt 15*14=210 mögliche Ausgangssituationen.
-			// Das lässt bis zu 210 parallele Prozesse zu
+			// Die ersten beiden Steine werden als statische Steine fest definiert
+			// [1,2] - [1,3] - ... - [15,14] insgesamt 15*14=210 Kombinationen.
+			// Das lässt bis zu 210 nebenläufige Berechnungen zu
 			for (int firstPawn = 1; firstPawn <= 15; firstPawn++) {
 				for (int secondPawn = 1; secondPawn <= 15; secondPawn++) {
 					if (firstPawn != secondPawn) {
@@ -278,29 +277,24 @@ public class Play {
 				}
 			}
 
-			// Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
+			// Die Liste aller statischen Steine wird in ein RDD überführt.
 			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
 			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
-			// Für jedes Element der Liste wird ein neues Game30 initialisiert
-			// und die Methode playSpark aufgerufen.
-			// Der Rückgabewert von playSpark ist wiederum eine Liste
-			// aller Lösungen der jeweiligen Ausgangssituation.
-			JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfSolutionsFound));
-
-			// Über die Methode filter werden die Elemente mit den
-			// tatsächlichen (nicht leeren) Lösungen herausgefiltert.
-			JavaRDD<String> nonEmptySolutions = solutionText.filter(Game30Spark.nonEmptySolutions);
+			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
+			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
+			// und überprüft und alle gültigen Lösungen zurückliefert.
+			JavaRDD<String> solutionText = data.flatMap(
+					Game30Spark.calculateSolutions(numberOfSolutionsFound));
 
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
-			// die Ergebnisse tatsächlich berechnet und als Textfile
-			// im HDFS gespeichert.
-			nonEmptySolutions.repartition(1).saveAsTextFile(outputDir);
+			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.
+			solutionText.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
 
-			// Schließen des Spark-Kontext
+			// Schließen des Spark Kontext
 			sparkContext.close();
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -314,17 +308,17 @@ public class Play {
 	 * anschließend mit der Methode map() die verteilte Verarbeitung anzustoßen.
 	 * Durch die Erhöhung der Ausgangssituationen kann die Berechnung in kleinere
 	 * Teilaufgaben zerlegt werden. Für jede der 2730 Ausganssituationen wird ein
-	 * neues Game30 initialiesiert und die Methode playSpark() aufgerufen. Der
+	 * neues Game30 initialiesiert und die Methode findSolutions() aufgerufen. Der
 	 * Rückgabewert ist eine Liste aller gefunden Lösungen. Das Ergebnis aller
 	 * Rückgabewerte ist ein JavaRDD, welches im Anschluss als Textfile im HDFS
 	 * abgelegt wird.
+	 * @param outputDir Verzeichnis, in dem die gefunden Lösungen als Textdatei abgelegt werden
 	 *
 	 * @author Alexander Döschl
 	 */
 	private static void playGame30SparkSmall(String outputDir) {
 		try {
-			// Statisches Array mit den möglichen Kombinationen der ersten beiden
-			// Spielsteine
+			// Liste für die möglichen Kombinationen der statischen Steine
 			List<Integer[]> initList = new ArrayList<Integer[]>();
 
 			// Konfiguration für Spark
@@ -334,13 +328,12 @@ public class Play {
 			if (!sparkConf.contains("spark.master")) {
 				sparkConf.set("spark.master", "local[2]");
 			}
-			// Spark Context für die Ausfürhung mit Spark
+			// Spark Kontext für die Ausführung mit Spark
 			JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
 
-			// Die ersten beiden Steine werden als statisches Array fest definiert
-			// [1,2,3] - [1,2,4] - ... - [15,14,13]
-			// insgesamt 15*14*13=2730 mögliche Ausgangssituationen.
-			// Das lässt bis zu 2730 parallele Prozesse zu.
+			// Die ersten drei Steine werden als statische Steine fest definiert
+			// [1,2,3] - [1,2,4] - ... - [15,14,13] insgesamt 15*14*13=2730 Kombinationen.
+			// Das lässt bis zu 2730 nebenläufige Berechnungen zu.
 			for (int firstPawn = 1; firstPawn <= 15; firstPawn++) {
 				for (int secondPawn = 1; secondPawn <= 15; secondPawn++) {
 					for (int thirdPawn = 1; thirdPawn <= 15; thirdPawn++) {
@@ -351,29 +344,24 @@ public class Play {
 				}
 			}
 
-			// Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
+			// Die Liste aller Aussgangssituationen wird in ein RDD überführt.
 			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
 			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
-			// Für jedes Element der Liste wird ein neues Game30 initialisiert
-			// und die Methode playSpark aufgerufen.
-			// Der Rückgabewert von playSpark ist wiederum eine Liste
-			// aller Lösungen der jeweiligen Ausgangssituation.
-			JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfSolutionsFound));
-
-			// Über die Methode filter werden die Elemente mit den
-			// tatsächlichen (nicht leeren) Lösungen herausgefiltert.
-			JavaRDD<String> nonEmptySolutions = solutionText.filter(Game30Spark.nonEmptySolutions);
+			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
+			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
+			// und überprüft und alle gültigen Lösungen zurückliefert.
+			JavaRDD<String> solutionText = data.flatMap(
+					Game30Spark.calculateSolutions(numberOfSolutionsFound));
 
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
-			// die Ergebnisse tatsächlich berechnet und als Textfile
-			// im HDFS gespeichert.
-			nonEmptySolutions.repartition(1).saveAsTextFile(outputDir);
+			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.
+			solutionText.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
 
-			// Schließen des Spark-Kontext
+			// Schließen des Spark Kontext
 			sparkContext.close();
 		} catch (Exception e) {
 			e.printStackTrace();
