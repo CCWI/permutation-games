@@ -27,6 +27,8 @@ import org.apache.spark.api.java.function.FlatMapFunction;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.util.LongAccumulator;
 
+import scala.Tuple2;
+
 /**
  * Diese Klasse stellt Funktionen zur Verfuegung, mit denen sich alle Loesungen
  * des Ratespiels 30 finden und ausgeben lassen. Hierfuer kann zwischen drei
@@ -264,11 +266,28 @@ public class Game30 {
         return new Runnable() {
             @Override
             public void run() {
-                findSolutions(staticLeadPawns, pawnsToPerm, null);
+                findSolutions(staticLeadPawns, pawnsToPerm);
             }
         };
     }
-
+    
+    /**
+     * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
+     * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
+     * wird, werden die Loesungen in diesen geschrieben, wenn nicht
+     * (<code>hadoopContext</code> ist <code>null</code>), erfolgt die Ausgabe
+     * in das lokale Dateisystem.
+     *
+     * @param staticLeadPawns Folge von Spielsteinen, welche nicht zu permutieren ist,
+     *                        sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
+     *                        wird, um moegliche Loesungen zu bilden
+     * @param pawnsToPerm     Menge der Spielsteinen, welche es zu permutieren gilt, um
+     *                        moegliche Loesungen zu finden
+     */
+    public ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm) {
+    	return findSolutions(staticLeadPawns, pawnsToPerm, null, null);
+    }
+    
     /**
      * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
      * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
@@ -286,13 +305,62 @@ public class Game30 {
      *                        in das lokale Dateisystem
      */
     public ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
-                                              Mapper<Object, Text, Text, NullWritable>.Context hadoopContext) {
+            Mapper<Object, Text, Text, NullWritable>.Context hadoopContext) {
+    	return findSolutions(staticLeadPawns, pawnsToPerm, hadoopContext, null);
+    }
+    
+    /**
+     * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
+     * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
+     * wird, werden die Loesungen in diesen geschrieben, wenn nicht
+     * (<code>hadoopContext</code> ist <code>null</code>), erfolgt die Ausgabe
+     * in das lokale Dateisystem.
+     *
+     * @param staticLeadPawns Folge von Spielsteinen, welche nicht zu permutieren ist,
+     *                        sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
+     *                        wird, um moegliche Loesungen zu bilden
+     * @param pawnsToPerm     Menge der Spielsteinen, welche es zu permutieren gilt, um
+     *                        moegliche Loesungen zu finden
+     * @param numPermutations Spark-Akkumulator, über den die Anzahl der berechneten Lösungen 
+     * 						  gezählt wird - falls <code>null</code>, erfolgt die Ausgabe
+     *                        in das lokale Dateisystem
+     */
+    public ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
+    		LongAccumulator numPermutations) {
+    	return findSolutions(staticLeadPawns, pawnsToPerm, null, numPermutations);
+    }
+
+    /**
+     * Sucht nach Loesungen des Ratespiels 30 mittels iterativer Permutation und
+     * gibt die gefundenen Loesungen aus. Falls ein Hadoop-Context uebergeben
+     * wird, werden die Loesungen in diesen geschrieben, wenn nicht
+     * (<code>hadoopContext</code> ist <code>null</code>), erfolgt die Ausgabe
+     * in das lokale Dateisystem.
+     *
+     * @param staticLeadPawns Folge von Spielsteinen, welche nicht zu permutieren ist,
+     *                        sondern den <code>pawnsToPerm</code> unveraendert vorangesetzt
+     *                        wird, um moegliche Loesungen zu bilden
+     * @param pawnsToPerm     Menge der Spielsteinen, welche es zu permutieren gilt, um
+     *                        moegliche Loesungen zu finden
+     * @param hadoopContext   Hadoop-Context, in welchen es die gefundenen Loesungen
+     *                        auszugeben gilt - falls <code>null</code>, erfolgt die Ausgabe
+     *                        in das lokale Dateisystem
+     * @param numPermutations Spark-Akkumulator, über den die Anzahl der berechneten Lösungen 
+     * 						  gezählt wird - falls <code>null</code>, erfolgt die Ausgabe
+     *                        in das lokale Dateisystem
+     */
+    private ArrayList<String> findSolutions(Integer[] staticLeadPawns, Integer[] pawnsToPerm,
+                                              Mapper<Object, Text, Text, NullWritable>.Context hadoopContext,
+                                              LongAccumulator numPermutations) {
         int[] result = new int[15];
         ArrayList<String> resultSet = new ArrayList<String>();
 
         boolean withHadoop = false;
+        boolean withSpark = false;
         if (hadoopContext != null) {
             withHadoop = true;
+        } else if (numPermutations != null) {
+        	withSpark = true;
         }
 
         // Belegt die Permutation mit den statischen Spielsteinen vor
@@ -325,6 +393,8 @@ public class Game30 {
             // Aktuallisiert den Fortschritt der Verarbeitung
             if (withHadoop) {
                 hadoopContext.getCounter(GAME30_COUNTER.NUM_EXEC_PERMUTATIONS).increment(1);
+            } else if (withSpark) {
+            	numPermutations.add(1);
             } else {
                 numExecPerm.increment();
             }
@@ -333,7 +403,6 @@ public class Game30 {
             // wird sie dem Hadoop-Context ueber- bzw. ins lokale Dateisystem
             // ausgegeben
             if (rulesSatisfied(result)) {
-                resultSet.add(getPermutationString(result));
                 if (withHadoop) {
                     try {
                         hadoopContext.write(new Text(getPermutationString(result)), NullWritable.get());
@@ -341,11 +410,11 @@ public class Game30 {
                         // TODO Auto-generated catch block
                         e.printStackTrace();
                     }
-                } else {
+                } else if (withSpark) {
+                	resultSet.add(getPermutationString(result));
+                }	else {
                     solutionNum.incrementAndGet();
-                    if (!outputFile.equals("init")) {
-                        writeSolutionToLocalFs(getPermutationString(result));
-                    }
+                    writeSolutionToLocalFs(getPermutationString(result));
                 }
             }
         }
@@ -433,7 +502,7 @@ public class Game30 {
 		 * 
 		 * @author Max-Emanuel Keller
 		 */
-		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numSolutions) {
+		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numPermutations, LongAccumulator numSolutions) {
 	    	return e -> {
 	    		Game30 game30 = new Game30();
 	            ArrayList<String> solutionsFound;
@@ -447,7 +516,7 @@ public class Game30 {
 	            }
 	            
 	            // Berechnung der Lösungen für die übergebenen Steine
-	            solutionsFound = game30.findSolutions(e, pawnsToPerm, null);
+	            solutionsFound = game30.findSolutions(e, pawnsToPerm, numPermutations);
 	            
 	            // Anzahl gefundener Lösungen zum Akkumulator hinzufügen
 	            numSolutions.add(solutionsFound.size());
@@ -455,6 +524,21 @@ public class Game30 {
 	            return solutionsFound.iterator();
 	        };
 	    }
+		
+		/**
+		 * Methode, welche die Indexnummer eines Elements zu dessen Nummerierung verwendet.
+		 * @return Spark-Funktion für die Übernahme der Lösungsnummern
+		 */
+		public static Function<Tuple2<String,Long>,String> enumerateSolutions() {
+			return e -> {
+				StringBuilder solutionNumber = new StringBuilder();
+				solutionNumber.append("Loesung ");
+				solutionNumber.append(Long.valueOf(e._2 + 1));
+				solutionNumber.append(":\n");
+				solutionNumber.append(e._1);
+				return solutionNumber.toString();
+			};
+		}
 		
 		/**
 		 * Spark-Funktion für das Herausfiltern der nicht leeren Lösungen.
@@ -494,7 +578,7 @@ public class Game30 {
 	 */
 	private synchronized void writeSolutionToLocalFs(String solution) {
 		try (BufferedWriter bw = new BufferedWriter(new FileWriter(outputFile, true))) {
-			bw.append("Loesung " + solutionNum + ":\n" + solution);
+			bw.append("Loesung " + solutionNum.incrementAndGet() + ":\n" + solution);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

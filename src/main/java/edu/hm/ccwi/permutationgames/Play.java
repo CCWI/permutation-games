@@ -18,6 +18,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.util.LongAccumulator;
@@ -279,19 +280,27 @@ public class Play {
 
 			// Die Liste aller statischen Steine wird in ein RDD überführt.
 			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
+			LongAccumulator numberOfPermutations = sparkContext.sc().longAccumulator();
 			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
 			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
 			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
 			// und überprüft und alle gültigen Lösungen zurückliefert.
 			JavaRDD<String> solutionText = data.flatMap(
-					Game30Spark.calculateSolutions(numberOfSolutionsFound));
-
+					Game30Spark.calculateSolutions(numberOfPermutations, numberOfSolutionsFound));
+			
+			// Die gefundenen Lösungen werden mit einem Index versehen
+			JavaPairRDD<String, Long> solutionsIndexed = solutionText.zipWithIndex();
+			
+			// Der Index wird in eine laufende Lösungsnummer überführt
+			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(Game30Spark.enumerateSolutions());
+			
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.
-			solutionText.repartition(1).saveAsTextFile(outputDir);
+			solutionsEnumerated.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
+			System.out.println("Calculated permutations: " + numberOfPermutations);
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
 
 			// Schließen des Spark Kontext
@@ -344,21 +353,29 @@ public class Play {
 				}
 			}
 
-			// Die Liste aller Aussgangssituationen wird in ein RDD überführt.
+			// Die Liste aller statischen Steine wird in ein RDD überführt.
 			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
+			LongAccumulator numberOfPermutations = sparkContext.sc().longAccumulator();
 			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
 			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
 			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
 			// und überprüft und alle gültigen Lösungen zurückliefert.
 			JavaRDD<String> solutionText = data.flatMap(
-					Game30Spark.calculateSolutions(numberOfSolutionsFound));
-
+					Game30Spark.calculateSolutions(numberOfPermutations, numberOfSolutionsFound));
+			
+			// Die gefundenen Lösungen werden mit einem Index versehen
+			JavaPairRDD<String, Long> solutionsIndexed = solutionText.zipWithIndex();
+			
+			// Der Index wird in eine laufende Lösungsnummer überführt
+			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(Game30Spark.enumerateSolutions());
+			
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.
-			solutionText.repartition(1).saveAsTextFile(outputDir);
+			solutionsEnumerated.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
+			System.out.println("Calculated permutations: " + numberOfPermutations);
 			System.out.println("Solutions found: " + numberOfSolutionsFound);
 
 			// Schließen des Spark Kontext
