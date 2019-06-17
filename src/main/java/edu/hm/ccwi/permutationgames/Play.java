@@ -252,6 +252,7 @@ public class Play {
 	 * @param outputDir Verzeichnis, in dem die gefunden Lösungen als Textdatei abgelegt werden
 	 *
 	 * @author Florian Gebhart
+	 * @author Max-Emanuel Keller
 	 */
 	private static void playGame30Spark(String outputDir) {
 		try {
@@ -300,7 +301,8 @@ public class Play {
 			JavaPairRDD<String, Long> solutionsIndexed = solutionSinglePartition.zipWithIndex();
 			
 			// Der Index wird in eine laufende Lösungsnummer überführt
-			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(Game30Spark.enumerateSolutions());
+			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(
+					Game30Spark.enumerateSolutions());
 			
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.
@@ -330,6 +332,7 @@ public class Play {
 	 * @param outputDir Verzeichnis, in dem die gefunden Lösungen als Textdatei abgelegt werden
 	 *
 	 * @author Alexander Döschl
+	 * @author Max-Emanuel Keller
 	 */
 	private static void playGame30SparkSmall(String outputDir) {
 		try {
@@ -379,7 +382,8 @@ public class Play {
 			JavaPairRDD<String, Long> solutionsIndexed = solutionSinglePartition.zipWithIndex();
 			
 			// Der Index wird in eine laufende Lösungsnummer überführt
-			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(Game30Spark.enumerateSolutions());
+			JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(
+					Game30Spark.enumerateSolutions());
 			
 			// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 			// die Ergebnisse tatsächlich berechnet und als Textdatei im HDFS gespeichert.

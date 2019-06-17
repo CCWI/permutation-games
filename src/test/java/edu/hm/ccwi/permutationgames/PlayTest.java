@@ -140,7 +140,6 @@ public class PlayTest extends TestCase
     	//Die Liste aller Aussgangssituationen wird verteilt im Cluster abgelegt
         JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
         LongAccumulator numberOfPermutations = sparkContext.sc().longAccumulator();
-        LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
 
         // Für jedes Element der Liste wird ein neues Game30 initialisiert
         // und die Methode playSpark aufgerufen.
@@ -148,18 +147,21 @@ public class PlayTest extends TestCase
         // aller Lösungen der jeweiligen Ausgangssituation.
 		JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfPermutations));
 		
+		// Lösungen in eine Partition überführen
+		JavaRDD<String> solutionSinglePartition = solutionText.repartition(1);
+					
 		// Die gefundenen Lösungen werden mit einem Index versehen
-		JavaPairRDD<String, Long> solutionsIndexed = solutionText.zipWithIndex();
+		JavaPairRDD<String, Long> solutionsIndexed = solutionSinglePartition.zipWithIndex();
 					
 		// Der Index wird in eine laufende Lösungsnummer überführt
 		JavaRDD<String> solutionsEnumerated = solutionsIndexed.map(Game30Spark.enumerateSolutions());
 		
 		// Mit dem Aufruf der Aktion (Action) saveAsTextFile werden
 		// die Ergebnisse tatsächlich berechnet und im Treiberprogramm gesammelt.
-		List<String> solutions = solutionsEnumerated.repartition(1).collect();
+		List<String> solutions = solutionsEnumerated.collect();
 		actualResult1.addAll(solutions);
         
-        assertEquals(numberOfSolutionsFound.value(), Long.valueOf(expectedResult1.size()));
+        assertEquals(Long.valueOf(solutionsEnumerated.count()), Long.valueOf(expectedResult1.size()));
         assertEquals(expectedResult1.size(), actualResult1.size());
         assertEquals(expectedResult1, actualResult1);
 

@@ -502,7 +502,8 @@ public class Game30 {
 		 * 
 		 * @author Max-Emanuel Keller
 		 */
-		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numPermutations) {
+		public static FlatMapFunction<Integer[], String> calculateSolutions(
+				LongAccumulator numPermutations) {
 	    	return e -> {
 	    		Game30 game30 = new Game30();
 	            ArrayList<String> solutionsFound;
@@ -512,7 +513,8 @@ public class Game30 {
 	            // Loescht die statischen Steine aus der Menge aller Spielsteine, um
 	            // die zu permutierende Menge zu erhalten
 	            for (Integer staticLeadPawn : e) {
-	                pawnsToPerm = removeElement(pawnsToPerm, Arrays.asList(pawnsToPerm).indexOf(staticLeadPawn));
+	                pawnsToPerm = removeElement(pawnsToPerm, 
+	                		Arrays.asList(pawnsToPerm).indexOf(staticLeadPawn));
 	            }
 	            
 	            // Berechnung der Lösungen für die übergebenen Steine
@@ -536,11 +538,6 @@ public class Game30 {
 				return solutionNumber.toString();
 			};
 		}
-		
-		/**
-		 * Spark-Funktion für das Herausfiltern der nicht leeren Lösungen.
-		 */
-		public static final Function<String, Boolean> nonEmptySolutions = x -> x.length() > 0;
 	}
 
 	/**
