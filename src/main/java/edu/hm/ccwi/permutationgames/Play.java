@@ -296,9 +296,6 @@ public class Play {
 			// Lösungen in eine Partition überführen
 			JavaRDD<String> solutionSinglePartition = solutionText.repartition(1);
 			
-			// Berechnete Lösungen im Speicher persistieren
-			//						JavaRDD<String> solutionChached = solutionSinglePartition.cache();
-			
 			// Die gefundenen Lösungen werden mit einem Index versehen
 			JavaPairRDD<String, Long> solutionsIndexed = solutionSinglePartition.zipWithIndex();
 			
@@ -377,9 +374,6 @@ public class Play {
 			
 			// Lösungen in eine Partition überführen
 			JavaRDD<String> solutionSinglePartition = solutionText.repartition(1);
-			
-			// Berechnete Lösungen im Speicher persistieren
-			// JavaRDD<String> solutionChached = solutionSinglePartition.cache();
 			
 			// Die gefundenen Lösungen werden mit einem Index versehen
 			JavaPairRDD<String, Long> solutionsIndexed = solutionSinglePartition.zipWithIndex();
