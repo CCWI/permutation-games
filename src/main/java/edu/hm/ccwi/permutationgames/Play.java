@@ -18,6 +18,7 @@ import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.NLineInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.spark.SparkConf;
+import org.apache.spark.SparkContext;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
@@ -260,12 +261,15 @@ public class Play {
 			// Konfiguration für Spark
 			SparkConf sparkConf = new SparkConf();
 			sparkConf.setAppName(JOB_NAME);
+			
 			// Lokale Ausführung, sofern kein Master gesetzt wurde
 			if (!sparkConf.contains("spark.master")) {
 				sparkConf.set("spark.master", "local[2]");
 			}
+			
 			// Spark Kontext für die Ausführung mit Spark
-			JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
+			JavaSparkContext javaSparkContext = new JavaSparkContext(sparkConf);
+			SparkContext sc = javaSparkContext.sc();
 
 			// Die ersten beiden Steine werden als statische Steine fest definiert
 			// [1,2] - [1,3] - ... - [15,14] insgesamt 15*14=210 Kombinationen.
@@ -279,10 +283,12 @@ public class Play {
 			}
 
 			// Die Liste aller statischen Steine wird in ein RDD überführt.
-			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
-			LongAccumulator numberOfPermutations = sparkContext.sc().longAccumulator();
-			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
-
+			JavaRDD<Integer[]> data = javaSparkContext.parallelize(initList, initList.size());
+			
+			// Akkumulatoren für das verteilte Zählen der Permutationen und gefundenen Lösungen
+			LongAccumulator numberOfPermutations = sc.longAccumulator("number_of_permutations");
+			LongAccumulator numberOfSolutionsFound = sc.longAccumulator("number_of_solutions");
+			
 			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
 			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
 			// und überprüft und alle gültigen Lösungen zurückliefert.
@@ -300,11 +306,11 @@ public class Play {
 			solutionsEnumerated.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
-			System.out.println("Calculated permutations: " + numberOfPermutations);
-			System.out.println("Solutions found: " + numberOfSolutionsFound);
+			System.out.println("Calculated permutations: " + numberOfPermutations.value());
+			System.out.println("Solutions found: " + numberOfSolutionsFound.value());
 
 			// Schließen des Spark Kontext
-			sparkContext.close();
+			javaSparkContext.close();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -338,7 +344,8 @@ public class Play {
 				sparkConf.set("spark.master", "local[2]");
 			}
 			// Spark Kontext für die Ausführung mit Spark
-			JavaSparkContext sparkContext = new JavaSparkContext(sparkConf);
+			JavaSparkContext javaSparkContext = new JavaSparkContext(sparkConf);
+			SparkContext sc = javaSparkContext.sc();
 
 			// Die ersten drei Steine werden als statische Steine fest definiert
 			// [1,2,3] - [1,2,4] - ... - [15,14,13] insgesamt 15*14*13=2730 Kombinationen.
@@ -354,9 +361,11 @@ public class Play {
 			}
 
 			// Die Liste aller statischen Steine wird in ein RDD überführt.
-			JavaRDD<Integer[]> data = sparkContext.parallelize(initList, initList.size());
-			LongAccumulator numberOfPermutations = sparkContext.sc().longAccumulator();
-			LongAccumulator numberOfSolutionsFound = sparkContext.sc().longAccumulator();
+			JavaRDD<Integer[]> data = javaSparkContext.parallelize(initList, initList.size());
+			
+			// Akkumulatoren für das verteilte Zählen der Permutationen und gefundenen Lösungen
+			LongAccumulator numberOfPermutations = sc.longAccumulator("number_of_permutations");
+			LongAccumulator numberOfSolutionsFound = sc.longAccumulator("number_of_solutions");
 
 			// Für jede Kombination der statischen Steine wird die Methode findSolutions 
 			// aufgerufen, welche diese mit den zu permutierenden Steinen verbindet  
@@ -375,11 +384,11 @@ public class Play {
 			solutionsEnumerated.repartition(1).saveAsTextFile(outputDir);
 
 			// Log-Ausgabe der Anzahl der gefundenen Lösungen
-			System.out.println("Calculated permutations: " + numberOfPermutations);
-			System.out.println("Solutions found: " + numberOfSolutionsFound);
+			System.out.println("Calculated permutations: " + numberOfPermutations.value());
+			System.out.println("Solutions found: " + numberOfSolutionsFound.value());
 
 			// Schließen des Spark Kontext
-			sparkContext.close();
+			javaSparkContext.close();
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
