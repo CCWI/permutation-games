@@ -146,7 +146,7 @@ public class PlayTest extends TestCase
         // und die Methode playSpark aufgerufen.
         // Der Rückgabewert von playSpark ist wiederum eine Liste
         // aller Lösungen der jeweiligen Ausgangssituation.
-		JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfPermutations, numberOfSolutionsFound));
+		JavaRDD<String> solutionText = data.flatMap(Game30Spark.calculateSolutions(numberOfPermutations));
 		
 		// Die gefundenen Lösungen werden mit einem Index versehen
 		JavaPairRDD<String, Long> solutionsIndexed = solutionText.zipWithIndex();

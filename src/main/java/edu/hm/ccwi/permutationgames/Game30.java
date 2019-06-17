@@ -497,12 +497,12 @@ public class Game30 {
 		 * um Loesungen fuer das Ratespiel 30 zu finden. Hierzu wird die Methode
 		 * {@link #findSolutions(Integer[], Integer[], Context) findSolutions}
 		 * verwendet, welche die gefundenen Lösungen als String-Array zurückliefert.
-		 * @param numSolutions Akkumulator, der die Anzahl der gefundenen Lösungen zählt
+		 * @param numPermutations Akkumulator, der die Anzahl der gefundenen Permutationen zählt
 		 * @return Spark-Funktion für die Berechnung der Lösungen
 		 * 
 		 * @author Max-Emanuel Keller
 		 */
-		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numPermutations, LongAccumulator numSolutions) {
+		public static FlatMapFunction<Integer[], String> calculateSolutions(LongAccumulator numPermutations) {
 	    	return e -> {
 	    		Game30 game30 = new Game30();
 	            ArrayList<String> solutionsFound;
@@ -517,9 +517,6 @@ public class Game30 {
 	            
 	            // Berechnung der Lösungen für die übergebenen Steine
 	            solutionsFound = game30.findSolutions(e, pawnsToPerm, numPermutations);
-	            
-	            // Anzahl gefundener Lösungen zum Akkumulator hinzufügen
-	            numSolutions.add(solutionsFound.size());
 	            
 	            return solutionsFound.iterator();
 	        };
