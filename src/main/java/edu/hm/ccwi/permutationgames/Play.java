@@ -57,6 +57,11 @@ public class Play {
 	private static final String ARGUMENT_HADOOP = "hadoop";
 
 	/**
+	 * Argument für die Berechnung mit Hadoop mit kleineren Permutationen
+	 */
+	private static final String ARGUMENT_HADOOP_SMALL = "hadoop-small";
+
+	/**
 	 * Argument für die Berechnung von Spiel 30
 	 */
 	private static final String ARGUMENT_GAME30 = "game30";
@@ -76,8 +81,9 @@ public class Play {
 			+ "\n\t\t\t- Verzeichnis des lokalen Dateisystems, in welches die"
 			+ "\n\t\t\t  Ausgabedatei geschrieben werden soll"
 			+ "\n\t\t- \"hadoop\": Berechnung mit Apache Hadoop MapReduce"
-			+ "\n\t\t- \"spark\": Berechnung mit Apache Hadoop Spark"
-			+ "\n\t\t- \"spark-small\": Berechnung mit Apache Hadoop Spark mit kleineren Permutationen"
+			+ "\n\t\t- \"hadoop-small\": Berechnung mit Apache Hadoop MapReduce mit kleineren Permutationen"
+			+ "\n\t\t- \"spark\": Berechnung mit Apache Spark"
+			+ "\n\t\t- \"spark-small\": Berechnung mit Apache Spark mit kleineren Permutationen"
 			+ "\n\t\t\t- Verzeichnis des Ratespiels 30 im verteilten Dateisystem"
 			+ "\n\t- \"availableProcessors\": Gibt die Anzahl an verfuegbaren Prozessoren aus";
 
@@ -85,15 +91,16 @@ public class Play {
 
 		if (args.length > 2 && args.length < 4) {
 			if (args[0].equals(ARGUMENT_GAME30)) {
-				if (args[1].equals(ARGUMENT_HADOOP) || args[1].equals(ARGUMENT_SPARK)
-						|| args[1].equals(ARGUMENT_SPARK_SMALL)) {
-
+				if (args[1].equals(ARGUMENT_HADOOP) || args[1].equals(ARGUMENT_HADOOP_SMALL)
+						|| args[1].equals(ARGUMENT_SPARK) || args[1].equals(ARGUMENT_SPARK_SMALL)) {
 					String inputDir = args[2] + "/input/";
 					String outputDir = args[2] + "/output_" + getTime() + "/";
 
 					try {
 						if (args[1].equals(ARGUMENT_HADOOP))
-							playGame30ApacheHadoop(inputDir, outputDir);
+							playGame30ApacheHadoop(inputDir, outputDir, false);
+						else if (args[1].equals(ARGUMENT_HADOOP_SMALL))
+							playGame30ApacheHadoop(inputDir, outputDir, true);
 						else if (args[1].equals(ARGUMENT_SPARK))
 							playGame30Spark(outputDir);
 						else
@@ -180,30 +187,33 @@ public class Play {
 	/**
 	 * Spielt das Ratespiel 30 mit Hadoop und gibt alle Loesungen in eine Datei des
 	 * verteilten Dateisystems aus. Hierfuer wird zunaechst eine Liste aller
-	 * Moeglichkeiten erstellt, wie die ersten beiden Felder des Spiels belegt
-	 * werden koennen. Diese Liste ist im verteilten Dateisystem abgelegt und dient
-	 * als Input der Hadoop-Verarbeitung. Die Parallelisierung erfolgt, indem jedem
-	 * Zahlenpaar dieser Liste eine Mapper-Instanz zugeteilt wird, welche die
+	 * Moeglichkeiten erstellt, wie die ersten zwei bzw. drei Felder des Spiels
+	 * belegt werden koennen. Diese Liste ist im verteilten Dateisystem abgelegt und
+	 * dient als Input der Hadoop-Verarbeitung. Die Parallelisierung erfolgt, indem
+	 * jeder Zahlenfolge dieser Liste eine Mapper-Instanz zugeteilt wird, welche die
 	 * Permutation der restlichen Felder und somit die Loesungsfindung uebernimmt.
 	 * Die Ergebnisse werden in einer Reducer-Instanz nummeriert zusammengefasst und
 	 * im Anschluss von Hadoop ins verteilte Dateisystem ausgegeben.
 	 *
-	 * @param inputDir  Ordner im verteilten Dateisystem, welcher die Liste der
-	 *                  statischen Spielsteine enthalten soll, welche wiederum den
-	 *                  Input der Hadoop-Verarbeitung darstellt
-	 * @param outputDir Ordner im verteilten Dateisystem, in welchen die Datei mit
-	 *                  den gefundenen Loesungen ausgegeben wird
+	 * @param inputDir      Ordner im verteilten Dateisystem, welcher die Liste der
+	 *                      statischen Spielsteine enthalten soll, welche wiederum
+	 *                      den Input der Hadoop-Verarbeitung darstellt
+	 * @param outputDir     Ordner im verteilten Dateisystem, in welchen die Datei
+	 *                      mit den gefundenen Loesungen ausgegeben wird
+	 * @param smallPermSize <code>true</code>, wenn nur die letzten 12 Stellen zu
+	 *                      permutieren sind, <code>false</code>, falls die letzten
+	 *                      13 Zahlen zu permutieren sind
 	 * @throws IOException
 	 * @throws ClassNotFoundException
 	 * @throws InterruptedException
 	 * @see Game30Mapper
 	 * @see Game30Reducer
 	 */
-	private static void playGame30ApacheHadoop(String inputDir, String outputDir)
+	private static void playGame30ApacheHadoop(String inputDir, String outputDir, boolean smallPermSize)
 			throws IOException, ClassNotFoundException, InterruptedException {
 		// Schreibt die Liste der statischen Spielsteine in das
 		// Input-Verzeichnis
-		writeGame30InputToDistributedFS(inputDir);
+		writeGame30InputToDistributedFS(inputDir, smallPermSize);
 
 		// Ein Hadoop-Job-Objekt buendelt alle Informationen einer
 		// Hadoop-Verarbeitung und kann von einem Hadoop-Cluster ausgefuehrt
@@ -412,27 +422,44 @@ public class Play {
 
 	/**
 	 * Legt im verteilten Dateisystem eine Datei namens <code>leadPawns</code> an,
-	 * welche alle Moeglichkeiten haelt, wie die ersten beiden Felder des Ratespiels
-	 * 30 belegt werden koennen. Diese Liste umfasst 210 Zahlenpaare in der Form na
-	 * | nb, wobei na sowie nb natürliche Zahlen sind, fuer die 0 < n < 16 gilt.
-	 * Jede Zeile der Ausgabe enthaelt genau ein Zahlenpaar und stellt den Input
-	 * fuer eine Hadoop-Mapper-Instanz dar.
+	 * welche alle Moeglichkeiten haelt, wie die ersten Felder des Ratespiels 30
+	 * belegt werden koennen. Diese Liste umfasst entweder 210 Zahlenpaare in der
+	 * Form na | nb oder 2730 dreistellige Zahlenfolgen in der Form na | nb | nc.
+	 * Dabei stellt n eine natürliche Zahlen dar, fuer die 0 < n < 16 gilt. Jede
+	 * Zeile der Ausgabe enthaelt genau eine Zahlenfolge und stellt den Input fuer
+	 * eine Hadoop-Mapper-Instanz dar.
 	 *
-	 * @param destinationDir Ordner im verteilten Dateisystem, in welchen die
-	 *                       Input-Datei ausgegeben wird
+	 * @param destinationDir  Ordner im verteilten Dateisystem, in welchen die
+	 *                        Input-Datei ausgegeben wird
+	 * @param firstThreePawns <code>true</code>, wenn die ersten drei Stellen zu
+	 *                        setzen sind, <code>false</code>, falls nur die ersten
+	 *                        beiden Zahlen zu verarbeiten sind
 	 */
-	private static void writeGame30InputToDistributedFS(String destinationDir) {
+	private static void writeGame30InputToDistributedFS(String destinationDir, boolean firstThreePawns) {
 		try {
 			FileSystem fileSystem = FileSystem.get(URI.create(destinationDir), new Configuration());
 
 			StringBuilder content = new StringBuilder();
 			for (int firstPawn = 1; firstPawn <= 15; firstPawn++) {
 				for (int secondPawn = 1; secondPawn <= 15; secondPawn++) {
-					if (firstPawn != secondPawn) {
-						content.append(firstPawn);
-						content.append("|");
-						content.append(secondPawn);
-						content.append("\n");
+					if (firstThreePawns) {
+						for (int thirdPawn = 1; thirdPawn <= 15; thirdPawn++) {
+							if (firstPawn != secondPawn && firstPawn != thirdPawn && secondPawn != thirdPawn) {
+								content.append(firstPawn);
+								content.append("|");
+								content.append(secondPawn);
+								content.append("|");
+								content.append(thirdPawn);
+								content.append("\n");
+							}
+						}
+					} else {
+						if (firstPawn != secondPawn) {
+							content.append(firstPawn);
+							content.append("|");
+							content.append(secondPawn);
+							content.append("\n");
+						}
 					}
 				}
 			}
