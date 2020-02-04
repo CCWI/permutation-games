@@ -266,7 +266,15 @@ public class Game30 {
         return new Runnable() {
             @Override
             public void run() {
+            	long startTime = System.currentTimeMillis();
+            	String threadName = Thread.currentThread().getName();
                 findSolutions(staticLeadPawns, pawnsToPerm);
+                long endTime = System.currentTimeMillis();
+                long processingTime = endTime - startTime;
+                String processingTimeHms = String.format("%02d:%02d:%02d", TimeUnit.MILLISECONDS.toHours(processingTime),
+                        TimeUnit.MILLISECONDS.toMinutes(processingTime) % TimeUnit.HOURS.toMinutes(1),
+                        TimeUnit.MILLISECONDS.toSeconds(processingTime) % TimeUnit.MINUTES.toSeconds(1));
+                System.out.println("Complete!\tThread: "+ threadName + "\tstartTime: " + startTime + "\tendTime: " + endTime + "\tProcessing time: " + processingTimeHms);
             }
         };
     }
@@ -527,6 +535,8 @@ public class Game30 {
 		/**
 		 * Methode, welche die Indexnummer eines Elements zu dessen Nummerierung verwendet.
 		 * @return Spark-Funktion für die Übernahme der Lösungsnummern
+		 * 
+		 * @author Max-Emanuel Keller
 		 */
 		public static Function<Tuple2<String,Long>,String> enumerateSolutions() {
 			return e -> {
